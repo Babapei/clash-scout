@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import argparse
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -121,6 +123,10 @@ class ScoutApp(App):
         ("2", "switch_tab('tab-compare')", "对比"),
         ("3", "switch_tab('tab-airports')", "机场"),
         ("4", "switch_tab('tab-alias')", "别名"),
+        ("5", "switch_tab('tab-settings')", "设置"),
+        ("a", "toggle_auto_task", "自动任务"),
+        ("plus,equal", "interval_up", "间隔+"),
+        ("minus", "interval_down", "间隔-"),
         ("e", "edit_alias", "改名"),
         ("space", "toggle_auto", "勾选自动"),
         ("r", "refresh", "刷新"),
@@ -152,6 +158,8 @@ class ScoutApp(App):
             with TabPane("别名", id="tab-alias"):
                 yield Static("选中一行按 e 改名；新名字留空表示恢复原始值。", id="alias-hint")
                 yield DataTable(id="table-alias", zebra_stripes=True)
+            with TabPane("设置", id="tab-settings"):
+                yield Static("正在读取…", id="settings")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -195,6 +203,7 @@ class ScoutApp(App):
         self._render_compare(snapshot)
         self._render_airports(snapshot)
         self._render_aliases(snapshot)
+        self._render_settings()
 
     # ---------------------------------------------------------------- Tab 1
 
@@ -400,6 +409,70 @@ class ScoutApp(App):
 
         self.refresh_data()
         self.notify(f"{domain} 自动检测：{'开启' if enabled else '关闭'}")
+
+
+    # ---------------------------------------------------------------- Tab 5
+
+    def _scheduler_state(self) -> tuple[bool, int]:
+        """返回 (是否开启, 间隔分钟)。"""
+        home = Path.home()
+        plist = home / "Library" / "LaunchAgents" / "com.local.scout.plist"
+        if not plist.exists():
+            return False, 10
+        try:
+            text = plist.read_text()
+            match = re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", text)
+            interval = int(match.group(1)) // 60 if match else 10
+        except OSError:
+            interval = 10
+        return True, interval
+
+    def _render_settings(self) -> None:
+        widget = self.query_one("#settings", Static)
+        enabled, interval = self._scheduler_state()
+        state = "[green]已开启[/green]" if enabled else "[red]已关闭[/red]"
+        lines = [
+            "[b]自动任务[/b]",
+            f"  状态：{state}",
+            f"  间隔：每 {interval} 分钟",
+            "",
+            "[b]快捷键[/b]",
+            "  [b]a[/b]      开启 / 关闭自动任务",
+            "  [b]+ / -[/b]  间隔 +5 / -5 分钟",
+            "",
+            "[dim]删除记录请用命令行：scout forget --env <名字> / --ip <IP> / --domain <域名>[/dim]",
+        ]
+        widget.update("\n".join(lines))
+
+    def action_toggle_auto_task(self) -> None:
+        from . import cli as cli_module
+
+        enabled, interval = self._scheduler_state()
+        args = argparse.Namespace(every=interval)
+        if enabled:
+            cli_module.cmd_uninstall_scheduler(args, self.cfg)
+        else:
+            cli_module.cmd_install_scheduler(args, self.cfg)
+        self._render_settings()
+
+    def action_interval_up(self) -> None:
+        self._change_interval(5)
+
+    def action_interval_down(self) -> None:
+        self._change_interval(-5)
+
+    def _change_interval(self, delta: int) -> None:
+        from . import cli as cli_module
+
+        enabled, interval = self._scheduler_state()
+        new_interval = max(1, interval + delta)
+        args = argparse.Namespace(every=new_interval)
+        if enabled:
+            cli_module.cmd_install_scheduler(args, self.cfg)
+            self.notify(f"间隔改为 {new_interval} 分钟")
+        else:
+            self.notify(f"自动任务没开，先按 a 开启（会使用 {new_interval} 分钟）", severity="warning")
+        self._render_settings()
 
     # ---------------------------------------------------------------- Tab 4
 
