@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
@@ -119,19 +120,20 @@ class ScoutApp(App):
     """
 
     BINDINGS = [
-        ("1", "switch_tab('tab-current')", "当前"),
-        ("2", "switch_tab('tab-compare')", "对比"),
-        ("3", "switch_tab('tab-airports')", "机场"),
-        ("4", "switch_tab('tab-alias')", "别名"),
-        ("5", "switch_tab('tab-settings')", "设置"),
-        ("a", "toggle_auto_task", "自动任务"),
-        ("plus,equal", "interval_up", "间隔+"),
-        ("minus", "interval_down", "间隔-"),
-        ("e", "edit_alias", "改名"),
-        ("space", "toggle_auto", "勾选自动"),
-        ("r", "refresh", "刷新"),
-        ("c", "check", "检查一轮"),
-        ("q", "quit", "退出"),
+        Binding("1", "switch_tab('tab-current')", "当前"),
+        Binding("2", "switch_tab('tab-compare')", "对比"),
+        Binding("3", "switch_tab('tab-airports')", "机场"),
+        Binding("4", "switch_tab('tab-alias')", "别名"),
+        Binding("5", "switch_tab('tab-settings')", "设置"),
+        Binding("r", "refresh", "刷新"),
+        Binding("c", "check", "检查"),
+        Binding("q", "quit", "退出"),
+        # 以下只在对应 Tab 里用，底部不显示（各 Tab 内已有文字提示）
+        Binding("a", "toggle_auto_task", "自动任务", show=False),
+        Binding("plus,equal", "interval_up", "间隔+", show=False),
+        Binding("minus", "interval_down", "间隔-", show=False),
+        Binding("e", "edit_alias", "改名", show=False),
+        Binding("space", "toggle_auto", "勾选自动", show=False),
     ]
 
     def __init__(self) -> None:
