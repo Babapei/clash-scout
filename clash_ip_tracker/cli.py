@@ -176,7 +176,7 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
                 if domain in seen:
                     continue
                 seen.add(domain)
-                if not store.is_airport_auto(node):
+                if getattr(args, "only_enabled", False) and not store.is_airport_auto(node):
                     continue
                 port = (node.get("ports") or [61750])[0]
                 targets.append((domain, int(port)))
@@ -405,7 +405,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
         "  exit 0\n"
         "fi\n"
         'echo "$(date \'+%F %T\') 开始记录"\n'
-        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" check --all 2>&1 | tail -8\n'
+        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" check --all --only-enabled 2>&1 | tail -8\n'
     )
     wrapper.chmod(0o755)
 
@@ -773,8 +773,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("check", help="采样 + 探测 + 更新表 + 报告")
     p_check.add_argument("--samples", type=int, help="DNS 采样轮数")
     p_check.add_argument("--recheck", type=int, help="距上次检测超过多少分钟才重测")
-    p_check.add_argument("--all", action="store_true", help="测表里记录过的所有机场（不影响当前订阅）")
+    p_check.add_argument("--all", action="store_true", help="测表里记录过的所有机场，不管有没有勾选")
     p_check.add_argument("--airport", help="只测指定机场（别名或域名）")
+    p_check.add_argument(
+        "--only-enabled",
+        action="store_true",
+        help="只测勾选了「自动检测」的机场（自动任务内部使用）",
+    )
     p_check.set_defaults(func=cmd_check)
 
     p_report = sub.add_parser("report", help="只看表，不联网")
