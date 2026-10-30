@@ -322,6 +322,64 @@ def cmd_uninstall_scheduler(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_forget(args: argparse.Namespace, cfg: dict) -> int:
+    """删除表里的环境 / 域名 / IP。"""
+    if not (args.env or args.ip or args.domain):
+        print("至少指定 --env / --ip / --domain 之一")
+        print("例：scout forget --env hotspot")
+        print("    scout forget --ip 1.2.3.4")
+        print("    scout forget --domain n43ds.chhbuv.cn")
+        return 1
+
+    path = _data_path(cfg)
+    removed: list[str] = []
+
+    with store.locked(path) as table:
+        envs = table["environments"]
+
+        # 定位目标环境
+        if args.env:
+            targets = [
+                k for k, v in envs.items()
+                if k == args.env or k == f"name:{args.env}" or v.get("label") == args.env
+            ]
+            if not targets:
+                print(f"找不到环境「{args.env}」。现有环境：{', '.join(envs) or '（空）'}")
+                return 1
+        else:
+            targets = list(envs.keys())
+
+        for env_id in targets:
+            env = envs[env_id]
+
+            if args.domain:
+                if args.domain in env["domains"]:
+                    del env["domains"][args.domain]
+                    removed.append(f"环境 {env_id} / 域名 {args.domain}")
+            elif args.ip:
+                for domain, node in env["domains"].items():
+                    if args.ip in node["ips"]:
+                        del node["ips"][args.ip]
+                        removed.append(f"环境 {env_id} / {domain} / IP {args.ip}")
+            else:
+                del envs[env_id]
+                removed.append(f"环境 {env_id}")
+
+        # 清理空环境（没有域名或域名为空）
+        for env_id in [k for k, v in envs.items() if not v["domains"]]:
+            del envs[env_id]
+
+        if not removed:
+            print("没有匹配到要删除的内容。")
+            return 0
+
+        print("已删除：")
+        for item in removed:
+            print(f"  - {item}")
+
+    return 0
+
+
 def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
     """列出表里记录过的所有机场域名，以及各自的健康概况。"""
     path = _data_path(cfg)
@@ -468,6 +526,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_uninstall = sub.add_parser("uninstall-scheduler", help="卸载定时记录任务")
     p_uninstall.set_defaults(func=cmd_uninstall_scheduler)
+
+    p_forget = sub.add_parser("forget", help="删除表里的环境 / 域名 / IP")
+    p_forget.add_argument("--env", help="环境名（如 hotspot 或 gw:192.168.30.1）")
+    p_forget.add_argument("--ip", help="要删除的 IP")
+    p_forget.add_argument("--domain", help="要删除的域名")
+    p_forget.set_defaults(func=cmd_forget)
 
     p_airports = sub.add_parser("airports", help="列出表里所有机场域名和健康概况")
     p_airports.set_defaults(func=cmd_airports)

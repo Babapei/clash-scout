@@ -143,6 +143,11 @@ scout --domain <域名> compare
 
 # 列出表里所有机场域名和各自的健康概况（换过机场后一起看）
 scout airports
+
+# 删除不要的记录（环境 / IP / 域名）
+scout forget --env hotspot
+scout forget --ip 1.2.3.4
+scout forget --domain old-airport.com
 ```
 
 ---
