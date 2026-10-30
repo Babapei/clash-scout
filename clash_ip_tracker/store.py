@@ -144,19 +144,23 @@ def _write(path: Path, table: dict[str, Any]) -> None:
 
 
 def get_environment(table: dict[str, Any], env_id: str, label: str | None = None) -> dict[str, Any]:
-    """取（或创建）一个网络环境节点。"""
-    env = table["environments"].setdefault(
-        env_id,
-        {
+    """取（或创建）一个网络环境节点。
+
+    注意：已有 label 时不会覆盖——那是用户通过 `scout env` 设置的显示名，
+    不能被自动任务的网关字符串冲掉。
+    """
+    env = table["environments"].get(env_id)
+    if env is None:
+        env = {
             "label": label or env_id,
             "first_seen": now_iso(),
             "last_seen": now_iso(),
             "domains": {},
-        },
-    )
+        }
+        table["environments"][env_id] = env
     env["last_seen"] = now_iso()
-    if label:
-        env["label"] = label
+    if not env.get("label"):
+        env["label"] = label or env_id
     return env
 
 
