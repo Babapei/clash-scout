@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clash-ip-tracker"
-version = "0.1.0"
+version = "0.3.0"
 description = "记录代理节点域名 IP 池的健康状态，找出值得手动指定的 IP"
 requires-python = ">=3.9"
-dependencies = []
+dependencies = ["PyYAML>=6"]
 
 [project.scripts]
-clash-ip-tracker = "clash_ip_tracker.cli:main"
+scout = "clash_ip_tracker.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["clash_ip_tracker*"]

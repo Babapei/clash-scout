@@ -290,8 +290,8 @@ def cmd_current(args: argparse.Namespace, cfg: dict) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="clash-ip-tracker",
-        description="记录代理节点域名的 IP 池健康状态（纯只读，不改任何 Clash 配置）",
+        prog="scout",
+        description="侦察代理节点域名的 IP 池健康（纯只读，不改任何 Clash 配置）",
     )
     parser.add_argument("--domain", help="节点域名，如 n43ds.chhbuv.cn")
     parser.add_argument("--port", type=int, help="节点端口，默认取配置")
