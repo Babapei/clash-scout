@@ -284,6 +284,7 @@ scout auto off           # 关闭
 # 测哪些由机场的勾选决定
 scout airport 红杏云 --auto off   # 取消勾选，不测它
 scout airport 红杏云 --auto on    # 勾上
+scout airport --id 域名 --auto off  # 用 --id 指定还没采集过的机场
 ```
 
 状态输出示例：

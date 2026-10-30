@@ -574,9 +574,6 @@ def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
                 nodes.append(node)
 
         if args.auto:
-            if not nodes:
-                print(f"表里没有域名 {domain}，先跑一次 check")
-                return 1
             enabled = args.auto == "on"
             store.set_airport_auto(table, domain, enabled)
             print(f"✅ 机场 {domain} 自动检测：{'开启' if enabled else '关闭'}")
