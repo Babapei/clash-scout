@@ -151,7 +151,27 @@ scout airports
 scout forget --env hotspot
 scout forget --ip 1.2.3.4
 scout forget --domain old-airport.com
+
+# 打开终端界面（需要先装 textual）
+scout ui
 ```
+
+### 终端界面 `scout ui`
+
+```bash
+python3 -m pip install textual -i https://pypi.tuna.tsinghua.edu.cn/simple
+scout ui
+```
+
+界面里：
+
+| 按键 | 作用 |
+|---|---|
+| `r` | 刷新 |
+| `c` | 检查一轮（会探测所有 IP） |
+| `q` | 退出 |
+
+当前正在连接的 IP 前面标 `●`。每 30 秒自动刷新一次。
 
 ---
 

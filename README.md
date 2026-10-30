@@ -29,6 +29,7 @@ python3 -m pip install --user -e . --no-build-isolation
 scout current     # 看现在连的 IP 好不好
 scout check       # 采样 + 探测 + 记录一轮
 scout compare     # 同一批 IP 在不同网络下的对比
+scout ui          # 打开终端界面（需先装 textual）
 ```
 
 ## 文档

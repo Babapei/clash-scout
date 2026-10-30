@@ -430,6 +430,17 @@ def cmd_forget(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_ui(args: argparse.Namespace, cfg: dict) -> int:
+    """打开终端界面（需要 textual）。"""
+    try:
+        from .ui import run
+    except ImportError:
+        print("需要 Textual：python3 -m pip install textual -i https://pypi.tuna.tsinghua.edu.cn/simple")
+        return 1
+    run()
+    return 0
+
+
 def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
     """列出表里记录过的所有机场域名，以及各自的健康概况。"""
     path = _data_path(cfg)
@@ -581,6 +592,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_forget.add_argument("--ip", help="要删除的 IP")
     p_forget.add_argument("--domain", help="要删除的域名")
     p_forget.set_defaults(func=cmd_forget)
+
+    p_ui = sub.add_parser("ui", help="打开终端界面（需要 textual）")
+    p_ui.set_defaults(func=cmd_ui)
 
     p_airports = sub.add_parser("airports", help="列出表里所有机场域名和健康概况")
     p_airports.set_defaults(func=cmd_airports)
