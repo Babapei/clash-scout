@@ -174,9 +174,38 @@ scout forget --env hotspot
 scout forget --ip 1.2.3.4
 scout forget --domain old-airport.com
 
+# 给环境 / 机场起别名（只影响显示）
+scout alias 家
+scout alias --domain 红杏云
+scout alias --list
+
 # 打开终端界面（需要先装 textual）
 scout ui
 ```
+
+### 别名（`scout alias`）
+
+网络和机场多了以后，`gw:192.168.30.1`、`n43ds.chhbuv.cn` 不好记，可以起别名：
+
+```bash
+scout alias 家                    # 给当前网络起名
+scout alias --domain 红杏云        # 给当前机场起名
+scout alias --list               # 列出所有别名
+```
+
+**内部标识不变，只改显示**：
+
+```
+内部（匹配/存储用）      显示（给人看）
+gw:192.168.30.1    →    家
+n43ds.chhbuv.cn    →    红杏云
+```
+
+所以：
+
+- 改别名**不会**导致数据错乱
+- 自动识别还是按网关 / 域名
+- 如果换了路由器（网关变），会变成新环境，旧数据保留在旧 id 下
 
 ### 终端界面 `scout ui`
 

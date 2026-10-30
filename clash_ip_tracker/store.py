@@ -250,6 +250,39 @@ def needs_check(rec: dict[str, Any], recheck_minutes: int) -> bool:
     return datetime.now(timezone.utc).astimezone() - last >= timedelta(minutes=recheck_minutes)
 
 
+
+# ---------------------------------------------------------------- 别名
+
+
+def set_env_label(env: dict[str, Any], label: str) -> None:
+    """给环境设置显示名（只影响显示，不影响内部 key）。"""
+    env["label"] = label
+
+
+def set_domain_alias(node: dict[str, Any], alias: str) -> None:
+    """给机场域名设置显示名。"""
+    node["alias"] = alias
+
+
+def env_display(env: dict[str, Any], env_id: str) -> str:
+    return env.get("label") or env_id
+
+
+def domain_display(node: dict[str, Any], domain: str) -> str:
+    return node.get("alias") or domain
+
+
+def list_aliases(table: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+    """返回 [(类型, 内部标识, 显示名, 是否已改名)]。"""
+    rows: list[tuple[str, str, str, str]] = []
+    for env_id, env in table["environments"].items():
+        label = env.get("label") or env_id
+        rows.append(("环境", env_id, label, "是" if label != env_id else "否"))
+        for domain, node in env["domains"].items():
+            alias = node.get("alias") or domain
+            rows.append((f"机场@{env_id}", domain, alias, "是" if alias != domain else "否"))
+    return rows
+
 def success_rate(rec: dict[str, Any]) -> float | None:
     total = rec.get("ok", 0) + rec.get("fail", 0)
     if total == 0:

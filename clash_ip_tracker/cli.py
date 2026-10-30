@@ -430,6 +430,68 @@ def cmd_forget(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_alias(args: argparse.Namespace, cfg: dict) -> int:
+    """给环境或机场设置显示名（只影响显示，不影响内部标识）。"""
+    path = _data_path(cfg)
+
+    with store.locked(path) as table:
+        if args.list:
+            rows = store.list_aliases(table)
+            if not rows:
+                print("表里还没有数据。")
+                return 0
+            header = f"{'类型':<16} {'内部标识':<26} {'显示名':<16} 已改名"
+            print(header)
+            print("-" * len(header))
+            for kind, ident, label, renamed in rows:
+                print(f"{kind:<16} {ident:<26} {label:<16} {renamed}")
+            return 0
+
+        name = args.name or args.env or args.domain
+        if not name:
+            print("用法：")
+            print("  scout alias 家                  给当前网络起名")
+            print("  scout alias --domain 红杏云      给当前机场起名")
+            print("  scout alias --list              列出所有别名")
+            return 1
+
+        if args.domain:
+            # 给机场（域名）起名
+            domain = args.id
+            if not domain:
+                try:
+                    domain, _, _ = clash_config.resolve_target()
+                except clash_config.ClashConfigError as exc:
+                    print(f"错误：{exc}\n用 --id 指定域名")
+                    return 1
+            found = False
+            for env_id, env in table["environments"].items():
+                node = env["domains"].get(domain)
+                if node is not None:
+                    store.set_domain_alias(node, name)
+                    found = True
+            if not found:
+                print(f"表里没有域名 {domain}，先跑一次 check。")
+                return 1
+            print(f"✅ 机场 {domain} → 显示为「{name}」")
+            return 0
+
+        # 给环境起名
+        env_id = args.id
+        if not env_id:
+            gateway = detect_gateway()
+            env_id = f"gw:{gateway}" if gateway else "unknown"
+        env = table["environments"].get(env_id)
+        if env is None:
+            known = ", ".join(table["environments"].keys()) or "（空）"
+            print(f"表里没有环境 {env_id}。现有：{known}")
+            print("用 --id 指定环境，或者先跑一次 check。")
+            return 1
+        store.set_env_label(env, name)
+        print(f"✅ 环境 {env_id} → 显示为「{name}」")
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace, cfg: dict) -> int:
     """打开终端界面（需要 textual）。"""
     try:
@@ -469,8 +531,9 @@ def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
                 flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
                 dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
                 ports = ",".join(str(x) for x in node.get("ports", [])) or "-"
+                display = node.get("alias") or domain
                 print(
-                    f"  {domain:<26} 活 {alive:<3} 抖 {flaky:<3} 死 {dead:<3} "
+                    f"  {display:<26} 活 {alive:<3} 抖 {flaky:<3} 死 {dead:<3} "
                     f"共 {len(ips):<3} 端口 {ports}"
                 )
             print()
@@ -592,6 +655,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_forget.add_argument("--ip", help="要删除的 IP")
     p_forget.add_argument("--domain", help="要删除的域名")
     p_forget.set_defaults(func=cmd_forget)
+
+    p_alias = sub.add_parser("alias", help="给环境/机场设置显示名")
+    p_alias.add_argument("name", nargs="?", help="给当前环境起的名字")
+    p_alias.add_argument("--env", help="给环境起名")
+    p_alias.add_argument("--domain", help="给机场起名")
+    p_alias.add_argument("--id", help="指定内部标识（环境 id 或域名）")
+    p_alias.add_argument("--list", action="store_true", help="列出所有别名")
+    p_alias.set_defaults(func=cmd_alias)
 
     p_ui = sub.add_parser("ui", help="打开终端界面（需要 textual）")
     p_ui.set_defaults(func=cmd_ui)

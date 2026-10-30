@@ -181,7 +181,7 @@ class ScoutApp(App):
         status.update(
             "\n".join(
                 [
-                    f"[b]环境[/b] {self.env_label}    [b]机场[/b] {self.domain}:{self.port}",
+                    f"[b]环境[/b] {self.env_label}    [b]机场[/b] {store.domain_display(node or {}, self.domain)}:{self.port}",
                     f"[b]当前连接[/b] {conn_desc}",
                     f"[b]推荐 IP[/b] {best or '[red]无可用[/red]'}    "
                     f"[b]统计[/b] 活 {alive} / 抖 {flaky} / 死 {dead} / 共 {len(ips)}",
@@ -279,12 +279,13 @@ class ScoutApp(App):
                 table.add_row(label, "（无）", "-", "-", "-", "-", "-")
                 continue
             for domain, node in domains.items():
+                display = store.domain_display(node, domain)
                 ips = node.get("ips", {})
                 alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
                 flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
                 dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
                 ports = ",".join(str(p) for p in node.get("ports", [])) or "-"
-                table.add_row(label, domain, str(alive), str(flaky), str(dead), str(len(ips)), ports)
+                table.add_row(label, display, str(alive), str(flaky), str(dead), str(len(ips)), ports)
 
     # ---------------------------------------------------------------- 动作
 

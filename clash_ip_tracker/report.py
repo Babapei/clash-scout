@@ -150,7 +150,7 @@ def render(
     )
 
     lines: list[str] = []
-    lines.append(f"环境: {env.get('label', '?')}    域名: {domain}    端口: {port}")
+    lines.append(f"环境: {env.get('label', '?')}    机场: {store.domain_display(node, domain)}    端口: {port}")
     if sample_counts is not None:
         lines.append(f"本轮 DNS 采样发现 {len(sample_counts)} 个 IP，本环境共记录 {len(node['ips'])} 个")
     alive = sum(1 for _, r in ips if r.get("status") == store.ALIVE and not r.get("stale"))
@@ -251,8 +251,15 @@ def render_compare(table: dict[str, Any], domain: str, *, show_time: bool = Fals
         content = max(display_width(r[1][idx]) for r in rows)
         widths.append(max(display_width(label), content, 8))
 
+    display = domain
+    for _, env in envs:
+        node = env["domains"].get(domain)
+        if node and node.get("alias"):
+            display = node["alias"]
+            break
+
     lines: list[str] = []
-    lines.append(f"域名: {domain}    对比 {len(env_cols)} 个环境")
+    lines.append(f"机场: {display}    对比 {len(env_cols)} 个环境")
     lines.append("")
 
     header = pad("IP", 18) + "  " + "  ".join(
