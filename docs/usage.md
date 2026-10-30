@@ -32,6 +32,9 @@ python3 -m unittest discover -s tests -v
 ---
 
 ## 用法
+> **域名和端口是自动读的**：默认从 Clash Verge 的当前订阅读取，
+> 不用加 `--from-clash`。想手动指定就用 `--domain` / `--port`。
+
 ### 核心：自动识别网络环境
 
 不指定 `--env` 时，用**默认网关 IP** 自动区分网络：
@@ -56,14 +59,14 @@ scout --domain <域名> --env hotspot check
 
 ```bash
 # 自动从 Verge 读当前订阅的域名和端口（推荐，省得手输）
-scout --from-clash --env hotspot check
+scout --env hotspot check
 
 # 或者手动指定
 scout --domain n43ds.chhbuv.cn --port 61750 --env hotspot check
 ```
 
 > **注意端口**：同一个订阅里，不同节点可能用不同端口（如 `28537`、`61750`），
-> 端口的可用性可能完全不同。用 `--from-clash` 会自动选出现最多的那个端口。
+> 端口的可用性可能完全不同。默认会从 Verge 读「当前选中节点」的端口。
 
 ```
 环境 hotspot：探测 2 个 IP
@@ -85,7 +88,7 @@ IP               状态       成功/失败      成功率     延迟       最�
 ### 看当前用的是哪个 IP（最实用的诊断）
 
 ```bash
-scout --from-clash current
+scout current
 ```
 
 ```
@@ -179,7 +182,7 @@ scout auto off           # 关闭
 它做三件事：
 
 1. 检查 Clash Verge 是否在运行（不在就跳过，不报错）
-2. 跑 `scout --from-clash check`
+2. 跑 `scout check`
 3. 结果写进表，同时记日志
 
 看日志：
@@ -233,7 +236,7 @@ function main(config) {
 今天实测的寿命是**几十分钟到几小时**。失效后：
 
 ```bash
-scout --from-clash check     # 重新采样，拿到新的推荐 IP
+scout check     # 重新采样，拿到新的推荐 IP
 ```
 
 然后把 hosts / Script 里的 IP 换成新的。

@@ -82,31 +82,27 @@ def current_connections(port: int) -> set[str]:
 def _target(args: argparse.Namespace, cfg: dict) -> tuple[str, int]:
     """解析目标域名和端口。
 
-    优先级：--domain > --from-clash > 配置文件 > 报错
+    优先级：--domain > 自动读 Verge > 配置文件 > 报错
+
+    默认就尝试从 Verge 读，不用加 --from-clash。
     """
     if args.domain:
         port = args.port or (cfg["probe_ports"][0] if cfg.get("probe_ports") else 61750)
         return args.domain, int(port)
 
-    if args.from_clash:
-        try:
-            domain, port, info = clash_config.resolve_target()
-        except clash_config.ClashConfigError as exc:
-            print(f"错误：{exc}", file=sys.stderr)
-            raise SystemExit(2)
-        print(f"从 Verge 读取：{info}")
-        print(f"  → {domain}:{port}")
+    # 默认尝试从 Verge 当前订阅读取
+    try:
+        domain, port, info = clash_config.resolve_target()
+        print(f"从 Verge 读取：{info} → {domain}:{port}", file=sys.stderr)
         return domain, int(args.port or port)
-
-    domain = cfg.get("domain")
-    if not domain:
-        print(
-            "错误：需要指定域名。用 --domain n43ds.chhbuv.cn，或 --from-clash 自动读取",
-            file=sys.stderr,
-        )
+    except clash_config.ClashConfigError as exc:
+        # 读不到再退回配置文件
+        if cfg.get("domain"):
+            port = args.port or (cfg["probe_ports"][0] if cfg.get("probe_ports") else 61750)
+            return cfg["domain"], int(port)
+        print(f"错误：{exc}", file=sys.stderr)
+        print("可以用 --domain 和 --port 手动指定", file=sys.stderr)
         raise SystemExit(2)
-    port = args.port or (cfg["probe_ports"][0] if cfg.get("probe_ports") else 61750)
-    return domain, int(port)
 
 
 def _data_path(cfg: dict) -> Path:
