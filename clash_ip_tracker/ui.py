@@ -322,15 +322,26 @@ class ScoutApp(App):
         envs = snapshot.get("environments", {})
         env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs.items()]
 
-        # 收集所有唯一的机场域名 → {env_id: node}
+        # ① 表里记录过的机场
         domains: dict[str, dict[str, dict[str, Any]]] = {}
         for env_id, env in envs.items():
             for domain, node in env.get("domains", {}).items():
                 domains.setdefault(domain, {})[env_id] = node
 
+        # ② 补充 Verge 里存在、但还没采集过的机场
+        verge_ports: dict[str, str] = {}
+        try:
+            for sub in clash_config.list_all_subscriptions():
+                for server, port in sub["domains"]:
+                    domains.setdefault(server, {})
+                    if port:
+                        verge_ports.setdefault(server, str(port))
+        except Exception:  # noqa: BLE001 - 读不到 Verge 不影响已有数据
+            pass
+
         if not domains:
             table.add_columns("提示")
-            table.add_row("表里还没有数据")
+            table.add_row("表里还没有数据，也没读到 Verge 订阅")
             self.airport_rows = []
             return
 
@@ -342,9 +353,19 @@ class ScoutApp(App):
         for domain in sorted(domains):
             env_map = domains[domain]
 
-            ports: set[str] = set()
-            all_ips: set[str] = set()
+            if env_map:
+                any_node = next(iter(env_map.values()))
+                display = store.domain_display(any_node, domain)
+                ports: set[str] = set()
+                for node in env_map.values():
+                    ports.update(str(p) for p in node.get("ports", []))
+                port_text = ",".join(sorted(ports)) or verge_ports.get(domain, "-")
+            else:
+                display = domain
+                port_text = verge_ports.get(domain, "-")
+
             cells: list[str] = []
+            all_ips: set[str] = set()
             for env_id, _ in env_cols:
                 node = env_map.get(env_id)
                 if node is None:
@@ -356,17 +377,10 @@ class ScoutApp(App):
                 flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
                 dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
                 cells.append(f"{alive}/{flaky}/{dead}")
-                ports.update(str(p) for p in node.get("ports", []))
 
-            any_node = next(iter(env_map.values()))
-            auto = "✓" if store.is_airport_auto(any_node) else "✗"
-            table.add_row(
-                store.domain_display(any_node, domain),
-                ",".join(sorted(ports)) or "-",
-                *cells,
-                str(len(all_ips)),
-                auto,
-            )
+            unique = str(len(all_ips)) if env_map else "未采集"
+            auto = "✓" if store.is_airport_auto(snapshot, domain) else "✗"
+            table.add_row(display, port_text, *cells, unique, auto)
             self.airport_rows.append(domain)
 
     def action_toggle_auto(self) -> None:
@@ -380,18 +394,9 @@ class ScoutApp(App):
 
         domain = rows[row]
         path = self._data_path()
-        enabled = False
         with store.locked(path) as data:
-            nodes = []
-            for env in data["environments"].values():
-                node = env["domains"].get(domain)
-                if node is not None:
-                    nodes.append(node)
-            if not nodes:
-                return
-            enabled = not store.is_airport_auto(nodes[0])
-            for node in nodes:
-                store.set_airport_auto(node, enabled)
+            enabled = not store.is_airport_auto(data, domain)
+            store.set_airport_auto(data, domain, enabled)
 
         self.refresh_data()
         self.notify(f"{domain} 自动检测：{'开启' if enabled else '关闭'}")

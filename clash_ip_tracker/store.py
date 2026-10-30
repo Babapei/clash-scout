@@ -269,13 +269,28 @@ def set_domain_alias(node: dict[str, Any], alias: str) -> None:
 
 
 
-def is_airport_auto(node: dict[str, Any]) -> bool:
-    """这个机场是否参与自动检测（默认参与）。"""
-    return node.get("auto", True)
+def is_airport_auto(table: dict[str, Any], domain: str) -> bool:
+    """这个机场是否参与自动检测。
+
+    优先级：节点的 auto 字段 > 表级 airport_prefs > 默认 True。
+    这样即使还没有任何采集数据，也能通过 airport_prefs 记住勾选状态。
+    """
+    for env in table["environments"].values():
+        node = env["domains"].get(domain)
+        if node is not None and "auto" in node:
+            return bool(node["auto"])
+    prefs = table.get("airport_prefs") or {}
+    return bool(prefs.get(domain, {}).get("auto", True))
 
 
-def set_airport_auto(node: dict[str, Any], enabled: bool) -> None:
-    node["auto"] = enabled
+def set_airport_auto(table: dict[str, Any], domain: str, enabled: bool) -> None:
+    """写入勾选状态：同时更新表级 prefs 和已存在节点上的 auto 字段。"""
+    prefs = table.setdefault("airport_prefs", {})
+    prefs.setdefault(domain, {})["auto"] = enabled
+    for env in table["environments"].values():
+        node = env["domains"].get(domain)
+        if node is not None:
+            node["auto"] = enabled
 
 def env_display(env: dict[str, Any], env_id: str) -> str:
     return env.get("label") or env_id

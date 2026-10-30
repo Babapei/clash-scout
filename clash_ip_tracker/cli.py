@@ -176,7 +176,7 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
                 if domain in seen:
                     continue
                 seen.add(domain)
-                if getattr(args, "only_enabled", False) and not store.is_airport_auto(node):
+                if getattr(args, "only_enabled", False) and not store.is_airport_auto(table, domain):
                     continue
                 port = (node.get("ports") or [61750])[0]
                 targets.append((domain, int(port)))
@@ -578,8 +578,7 @@ def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
                 print(f"表里没有域名 {domain}，先跑一次 check")
                 return 1
             enabled = args.auto == "on"
-            for node in nodes:
-                store.set_airport_auto(node, enabled)
+            store.set_airport_auto(table, domain, enabled)
             print(f"✅ 机场 {domain} 自动检测：{'开启' if enabled else '关闭'}")
             return 0
 
@@ -597,7 +596,7 @@ def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
                 print(f"表里没有域名 {domain}，先跑一次 check")
             else:
                 node = nodes[0]
-                auto_state = "开启" if store.is_airport_auto(node) else "关闭"
+                auto_state = "开启" if store.is_airport_auto(table, domain) else "关闭"
                 print(
                     f"当前机场: {domain} → 显示为「{node.get('alias') or domain}」"
                     f"    自动检测: {auto_state}"

@@ -98,6 +98,57 @@ def extract_target(profile_path: Path, selected_names: set[str] | None = None) -
     return server, port, f"出现最多的组合（{count} 个节点）"
 
 
+def list_all_subscriptions(verge_dir: Path | None = None) -> list[dict[str, Any]]:
+    """列出 Verge 里所有 remote 订阅，以及各自节点的 server:port。
+
+    返回 [{"uid", "name", "domains": [(server, port), ...]}]。
+    订阅文件不存在或解析失败时 domains 为空，不会抛异常。
+    """
+    root = verge_dir or find_verge_dir()
+    if root is None:
+        raise ClashConfigError("找不到 Clash Verge 配置目录")
+
+    profiles_path = root / "profiles.yaml"
+    if not profiles_path.exists():
+        return []
+
+    data = _load_yaml(profiles_path)
+    if not isinstance(data, dict):
+        return []
+
+    result: list[dict[str, Any]] = []
+    for item in data.get("items") or []:
+        if not isinstance(item, dict) or item.get("type") != "remote":
+            continue
+        uid = str(item.get("uid") or "")
+        name = item.get("name") or uid
+
+        file_name = item.get("file") or f"{uid}.yaml"
+        profile_path = root / "profiles" / file_name
+        targets: list[tuple[str, int]] = []
+        if profile_path.exists():
+            try:
+                profile_data = _load_yaml(profile_path)
+                proxies = profile_data.get("proxies") or []
+                counter: Counter[tuple[str, int]] = Counter()
+                for proxy in proxies:
+                    if not isinstance(proxy, dict):
+                        continue
+                    server = proxy.get("server")
+                    try:
+                        port = int(proxy.get("port") or 0)
+                    except (TypeError, ValueError):
+                        port = 0
+                    if server:
+                        counter[(str(server), port)] += 1
+                targets = [item for item, _count in counter.most_common()]
+            except Exception:  # noqa: BLE001 - 单个订阅坏掉不影响其他
+                targets = []
+
+        result.append({"uid": uid, "name": name, "domains": targets})
+    return result
+
+
 def resolve_target(verge_dir: Path | None = None) -> tuple[str, int, str]:
     """返回 (domain, port, 来源说明)。读不到时抛 ClashConfigError。"""
     vd = verge_dir or find_verge_dir()
