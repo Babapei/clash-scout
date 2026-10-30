@@ -267,12 +267,14 @@ scout ui
 这是内建命令，`scout --help` 里能看到。
 
 ```bash
-scout auto               # 查看状态（是否加载、间隔、上次运行时间）
-scout auto on             # 开启，默认只测当前机场
-scout auto on --all       # 测所有勾选的机场
-scout auto on --current   # 显式指定只测当前（默认）
-scout auto on --every 30  # 改成每 30 分钟
+scout auto               # 查看状态（范围、间隔、上次运行时间）
+scout auto on            # 开启：测所有勾选的机场
+scout auto on --every 30 # 改成每 30 分钟
 scout auto off           # 关闭
+
+# 测哪些由机场的勾选决定
+scout airport 红杏云 --auto off   # 取消勾选，不测它
+scout airport 红杏云 --auto on    # 勾上
 ```
 
 状态输出示例：
@@ -282,7 +284,7 @@ scout auto off           # 关闭
   状态：已加载
   间隔：每 10 分钟
   上次运行：2026-10-31 00:49:10 开始记录
-  范围：当前机场
+  范围：所有勾选的机场
   日志：/Users/xxx/.clash-ip-tracker/scheduler.log
   关闭：scout auto off
 ```
