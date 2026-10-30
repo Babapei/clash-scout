@@ -33,8 +33,9 @@ scout compare     # 同一批 IP 在不同网络下的对比
 
 ## 文档
 
+- **[背景与设计](docs/background.md)** —— 为什么做、踩过的坑、设计取舍
 - **[完整用法](docs/usage.md)** —— 所有命令、输出示例、状态含义、怎么把稳定 IP 固定下来
-- **[内部细节](docs/internals.md)** —— 数据存哪、配置项、设计取舍、扩展方向
+- **[内部细节](docs/internals.md)** —— 数据存哪、配置项、扩展方向
 
 ## License
 
