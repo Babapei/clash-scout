@@ -154,6 +154,9 @@ IP        家                学校              结论
 ### 其它子命令
 
 ```bash
+# 测表里记录过的所有机场（不影响当前订阅）
+scout check --all
+
 # 只采样 DNS，不做端口探测（最轻）
 scout --domain <域名> sample
 

@@ -150,8 +150,75 @@ def cmd_sample(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def _check_all(args: argparse.Namespace, cfg: dict) -> int:
+    """测表里记录过的所有机场（不影响当前正在用的订阅）。"""
+    env_id, label = resolve_env(args)
+    recheck = args.recheck if args.recheck is not None else cfg["recheck_minutes"]
+    timeout = cfg["probe_timeout"]
+    samples = args.samples or 2  # 测多个时默认少采样，控制总耗时
+    path = _data_path(cfg)
+
+    # 先收集所有域名和端口
+    with store.locked(path) as table:
+        targets: list[tuple[str, int]] = []
+        seen: set[str] = set()
+        for env in table["environments"].values():
+            for domain, node in env["domains"].items():
+                if domain in seen:
+                    continue
+                seen.add(domain)
+                port = (node.get("ports") or [61750])[0]
+                targets.append((domain, int(port)))
+
+    if not targets:
+        print("表里还没有任何机场记录，先跑一次 check。")
+        return 1
+
+    total = len(targets)
+    print(f"共 {total} 个机场，当前环境：{label}")
+
+    for idx, (domain, port) in enumerate(targets, 1):
+        print(f"\n【{idx}/{total}】{domain}:{port}")
+        counts = dns_probe.sample(
+            domain,
+            cfg["dns_servers"],
+            samples,
+            cfg["dns_gap_seconds"],
+            cfg["dns_timeout"],
+        )
+        if not counts:
+            print("  DNS 没返回结果，跳过")
+            continue
+
+        with store.locked(path) as table:
+            env = store.get_environment(table, env_id, label)
+            node = store.get_domain(env, domain, port)
+            for ip in counts:
+                store.upsert_seen(node, ip)
+
+            pending = [
+                ip for ip, rec in node["ips"].items()
+                if not rec.get("stale") and store.needs_check(rec, recheck)
+            ]
+            for ip in pending:
+                ok, latency = port_probe.tcp_probe(ip, port, timeout)
+                store.apply_probe(node["ips"][ip], ok=ok, latency_ms=latency)
+                mark = "OK  " if ok else "DEAD"
+                ms = f"{latency:.0f}ms" if latency else "-"
+                print(f"  {ip:<16} {mark}  {ms}")
+
+            store.mark_stale(node, cfg["stale_days"])
+            print()
+            print(report.render(env, node, domain, port, sample_counts=counts))
+
+    return 0
+
+
 def cmd_check(args: argparse.Namespace, cfg: dict) -> int:
     """采样 + 探测过期 IP + 更新表 + 输出报告。"""
+    if getattr(args, "all", False):
+        return _check_all(args, cfg)
+
     domain, port = _target(args, cfg)
     counts = _sample(args, cfg, domain)
     if counts is None:
@@ -669,6 +736,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("check", help="采样 + 探测 + 更新表 + 报告")
     p_check.add_argument("--samples", type=int, help="DNS 采样轮数")
     p_check.add_argument("--recheck", type=int, help="距上次检测超过多少分钟才重测")
+    p_check.add_argument("--all", action="store_true", help="测表里记录过的所有机场（不影响当前订阅）")
     p_check.set_defaults(func=cmd_check)
 
     p_report = sub.add_parser("report", help="只看表，不联网")
