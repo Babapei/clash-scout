@@ -240,6 +240,9 @@ scout --domain <域名> best
 
 # 列出所有环境
 scout --domain <域名> compare
+
+# 列出表里所有机场域名和各自的健康概况（换过机场后一起看）
+scout airports
 ```
 
 ---

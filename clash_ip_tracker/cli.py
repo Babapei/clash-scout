@@ -224,6 +224,47 @@ def cmd_best(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
+    """列出表里记录过的所有机场域名，以及各自的健康概况。"""
+    path = _data_path(cfg)
+    if not path.exists():
+        print(f"表还不存在：{path}\n先跑一次 check。")
+        return 1
+
+    with store.locked(path) as table:
+        if not table["environments"]:
+            print("表里还没有任何数据。")
+            return 0
+
+        total = 0
+        for env_id, env in table["environments"].items():
+            label = env.get("label", env_id)
+            print(f"环境 {label}")
+            domains = env["domains"]
+            if not domains:
+                print("  （无数据）")
+                print()
+                continue
+            for domain, node in domains.items():
+                total += 1
+                ips = node["ips"]
+                alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
+                flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
+                dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
+                ports = ",".join(str(x) for x in node.get("ports", [])) or "-"
+                print(
+                    f"  {domain:<26} 活 {alive:<3} 抖 {flaky:<3} 死 {dead:<3} "
+                    f"共 {len(ips):<3} 端口 {ports}"
+                )
+            print()
+
+        if total == 0:
+            print("表里还没有任何机场记录。")
+        else:
+            print(f"共 {total} 条记录（同一域名在不同环境下分别计数）")
+    return 0
+
+
 def cmd_compare(args: argparse.Namespace, cfg: dict) -> int:
     """对比同一个域名在不同网络环境下的表现。"""
     domain, _ = _target(args, cfg)
@@ -322,6 +363,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_best = sub.add_parser("best", help="输出推荐 IP（供脚本使用）")
     p_best.set_defaults(func=cmd_best)
+
+    p_airports = sub.add_parser("airports", help="列出表里所有机场域名和健康概况")
+    p_airports.set_defaults(func=cmd_airports)
 
     p_compare = sub.add_parser("compare", help="对比不同网络环境下同一个域名的 IP 状态")
     p_compare.set_defaults(func=cmd_compare)
