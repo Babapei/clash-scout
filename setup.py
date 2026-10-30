@@ -7,7 +7,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="clash-ip-tracker",
+    name="clash-scout",
     version="0.3.0",
     description="记录代理节点域名 IP 池的健康状态，找出值得手动指定的 IP",
     packages=find_packages(include=["clash_ip_tracker*"]),

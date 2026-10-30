@@ -19,7 +19,7 @@ Clash 不保存这些历史，也不告诉你现在连的是哪个 IP、好还�
 ## 快速开始
 
 ```bash
-cd clash-ip-tracker
+cd clash-scout
 python3 -m pip install --user -e . --no-build-isolation
 ```
 
