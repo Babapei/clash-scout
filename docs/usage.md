@@ -157,6 +157,10 @@ IP        家                学校              结论
 # 测表里记录过的所有机场（不影响当前订阅）
 scout check --all
 
+# 只测指定机场（用别名或域名）
+scout check --airport 红杏云
+scout check --airport n43ds.chhbuv.cn
+
 # 只采样 DNS，不做端口探测（最轻）
 scout --domain <域名> sample
 
@@ -260,7 +264,8 @@ scout ui
 
 ```bash
 scout auto               # 查看状态（是否加载、间隔、上次运行时间）
-scout auto on            # 开启，默认每 10 分钟
+scout auto on            # 开启，默认每 10 分钟（只测当前机场）
+scout auto on --all      # 自动任务测所有机场
 scout auto on --every 30 # 改成每 30 分钟
 scout auto off           # 关闭
 ```
@@ -290,6 +295,8 @@ tail -f ~/.clash-ip-tracker/scheduler.log
 
 **macOS 注意**：launchd 不能访问 `~/Documents`（系统隐私保护），
 脚本会自动把运行文件复制到 `~/.clash-ip-tracker/app/` 再跑，项目本身不用移动。
+
+> **改了代码之后要重跑一次 `scout auto on`**，否则自动任务还在用旧的运行副本。
 
 **Linux 用户**可以自己配 cron：
 

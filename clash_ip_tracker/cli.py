@@ -150,6 +150,15 @@ def cmd_sample(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def _find_domain_by_name(target: str, table: dict) -> str | None:
+    """按别名或域名在表里找机场。"""
+    for env in table["environments"].values():
+        for domain, node in env["domains"].items():
+            if node.get("alias") == target or domain == target:
+                return domain
+    return None
+
+
 def _check_all(args: argparse.Namespace, cfg: dict) -> int:
     """测表里记录过的所有机场（不影响当前正在用的订阅）。"""
     env_id, label = resolve_env(args)
@@ -218,6 +227,15 @@ def cmd_check(args: argparse.Namespace, cfg: dict) -> int:
     """采样 + 探测过期 IP + 更新表 + 输出报告。"""
     if getattr(args, "all", False):
         return _check_all(args, cfg)
+
+    if getattr(args, "airport", None):
+        with store.locked(_data_path(cfg)) as table:
+            resolved = _find_domain_by_name(args.airport, table)
+        if not resolved:
+            print(f"找不到机场「{args.airport}」。用 scout airports 看有哪些。")
+            return 1
+        args.domain = resolved
+        print(f"指定机场：{args.airport} → {resolved}", file=sys.stderr)
 
     domain, port = _target(args, cfg)
     counts = _sample(args, cfg, domain)
@@ -383,7 +401,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
         "  exit 0\n"
         "fi\n"
         'echo "$(date \'+%F %T\') 开始记录"\n'
-        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" --from-clash check 2>&1 | tail -5\n'
+        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" --from-clash check{" --all" if getattr(args, "all", False) else ""} 2>&1 | tail -8\n'
     )
     wrapper.chmod(0o755)
 
@@ -419,7 +437,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
         print(f"加载失败：{result.stderr.strip()}")
         return 1
 
-    print(f"✅ 已安装：每 {interval} 分钟自动记录一次")
+    print(f"✅ 已安装：每 {interval} 分钟自动记录一次" + ("（全部机场）" if getattr(args, "all", False) else "（当前机场）"))
     print(f"   日志：{log_dir}/scheduler.log")
     print("   关闭：scout auto off")
     return 0
@@ -737,6 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_check.add_argument("--samples", type=int, help="DNS 采样轮数")
     p_check.add_argument("--recheck", type=int, help="距上次检测超过多少分钟才重测")
     p_check.add_argument("--all", action="store_true", help="测表里记录过的所有机场（不影响当前订阅）")
+    p_check.add_argument("--airport", help="只测指定机场（别名或域名）")
     p_check.set_defaults(func=cmd_check)
 
     p_report = sub.add_parser("report", help="只看表，不联网")
@@ -749,6 +768,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_auto.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status",
                         help="status 查看状态（默认），on 开启，off 关闭")
     p_auto.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
+    p_auto.add_argument("--all", action="store_true", help="自动任务测所有机场，不只当前订阅")
     p_auto.set_defaults(func=cmd_auto)
 
     p_forget = sub.add_parser("forget", help="删除表里的环境 / 域名 / IP")
