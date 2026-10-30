@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 from textual.app import App, ComposeResult
-from textual.widgets import DataTable, Footer, Header, Static, TabbedContent, TabPane
+from textual.containers import Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
 
 from . import clash_config, config, store
 from .port_probe import tcp_probe
@@ -57,6 +59,49 @@ def current_connections(port: int) -> set[str]:
     return ips
 
 
+
+
+class EditAliasScreen(ModalScreen[str]):
+    """编辑显示名的弹窗。返回新名字，取消返回 None。"""
+
+    CSS = """
+    EditAliasScreen {
+        align: center middle;
+    }
+    #dialog {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #alias-input { margin: 1 0; }
+    """
+
+    BINDINGS = [("escape", "cancel", "取消")]
+
+    def __init__(self, kind: str, ident: str, current: str) -> None:
+        super().__init__()
+        self.kind = kind
+        self.ident = ident
+        self.current = current
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(f"[b]{self.kind}[/b]  内部标识: {self.ident}")
+            yield Static(f"当前显示名: {self.current}")
+            yield Input(value=self.current, placeholder="新名字（留空恢复原始值）", id="alias-input")
+            yield Static("[dim]Enter 保存   Esc 取消[/dim]")
+
+    def on_mount(self) -> None:
+        self.query_one("#alias-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
 class ScoutApp(App):
     """scout 的终端仪表盘。"""
 
@@ -75,6 +120,8 @@ class ScoutApp(App):
         ("1", "switch_tab('tab-current')", "当前"),
         ("2", "switch_tab('tab-compare')", "对比"),
         ("3", "switch_tab('tab-airports')", "机场"),
+        ("4", "switch_tab('tab-alias')", "别名"),
+        ("e", "edit_alias", "改名"),
         ("r", "refresh", "刷新"),
         ("c", "check", "检查一轮"),
         ("q", "quit", "退出"),
@@ -101,6 +148,9 @@ class ScoutApp(App):
                 yield DataTable(id="table-compare", zebra_stripes=True)
             with TabPane("机场", id="tab-airports"):
                 yield DataTable(id="table-airports", zebra_stripes=True)
+            with TabPane("别名", id="tab-alias"):
+                yield Static("选中一行按 e 改名；新名字留空表示恢复原始值。", id="alias-hint")
+                yield DataTable(id="table-alias", zebra_stripes=True)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -109,6 +159,7 @@ class ScoutApp(App):
         )
         self.query_one("#table-compare", DataTable)
         self.query_one("#table-airports", DataTable)
+        self.query_one("#table-alias", DataTable).add_columns("类型", "内部标识", "显示名")
         self.refresh_data()
         self.set_interval(30, self.refresh_data)
 
@@ -142,6 +193,7 @@ class ScoutApp(App):
         self._render_current(snapshot)
         self._render_compare(snapshot)
         self._render_airports(snapshot)
+        self._render_aliases(snapshot)
 
     # ---------------------------------------------------------------- Tab 1
 
@@ -286,6 +338,67 @@ class ScoutApp(App):
                 dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
                 ports = ",".join(str(p) for p in node.get("ports", [])) or "-"
                 table.add_row(label, display, str(alive), str(flaky), str(dead), str(len(ips)), ports)
+
+
+    # ---------------------------------------------------------------- Tab 4
+
+    def _render_aliases(self, snapshot: dict[str, Any]) -> None:
+        table = self.query_one("#table-alias", DataTable)
+        table.clear()
+        self.alias_rows: list[tuple[str, str, str]] = []
+
+        for env_id, env in snapshot.get("environments", {}).items():
+            label = env.get("label") or env_id
+            table.add_row("环境", env_id, label)
+            self.alias_rows.append(("环境", env_id, label))
+            for domain, node in env.get("domains", {}).items():
+                alias = node.get("alias") or domain
+                table.add_row("机场", domain, alias)
+                self.alias_rows.append(("机场", domain, alias))
+
+        if not self.alias_rows:
+            table.add_row("-", "表里还没有数据", "-")
+
+    def action_edit_alias(self) -> None:
+        table = self.query_one("#table-alias", DataTable)
+        row = table.cursor_row
+        if row < 0 or row >= len(getattr(self, "alias_rows", [])):
+            self.notify("先选一行（切到别名 Tab，用 ↑↓ 选）", severity="warning")
+            return
+
+        kind, ident, current = self.alias_rows[row]
+        self.push_screen(EditAliasScreen(kind, ident, current), self._apply_alias_edit)
+
+    def _apply_alias_edit(self, new_name: str | None) -> None:
+        if new_name is None:
+            return  # 取消
+
+        table = self.query_one("#table-alias", DataTable)
+        row = table.cursor_row
+        if row < 0 or row >= len(getattr(self, "alias_rows", [])):
+            return
+        kind, ident, _ = self.alias_rows[row]
+
+        path = self._data_path()
+        with store.locked(path) as data:
+            if kind == "环境":
+                env = data["environments"].get(ident)
+                if env is not None:
+                    if new_name.strip():
+                        store.set_env_label(env, new_name.strip())
+                    else:
+                        env.pop("label", None)
+            else:
+                for env in data["environments"].values():
+                    node = env["domains"].get(ident)
+                    if node is not None:
+                        if new_name.strip():
+                            store.set_domain_alias(node, new_name.strip())
+                        else:
+                            node.pop("alias", None)
+
+        self.refresh_data()
+        self.notify(f"已更新：{new_name.strip() or '（恢复原始值）'}")
 
     # ---------------------------------------------------------------- 动作
 
