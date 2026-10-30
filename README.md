@@ -34,7 +34,7 @@ python3 -m unittest discover -s tests -v   # 跑测试
 直接运行（不安装）：
 
 ```bash
-python3 -m clash_ip_tracker --domain <节点域名> --port <端口> check
+scout --domain <节点域名> --port <端口> check
 ```
 
 或安装成命令：
@@ -54,28 +54,28 @@ clash-ip-tracker --domain <域名> --port <端口> check
 
 ```bash
 # 在家里（网关 192.168.30.1）→ 自动记到 gw:192.168.30.1
-python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 check
+scout --domain n43ds.chhbuv.cn --port 61750 check
 
 # 在学校（网关 172.27.255.254）→ 自动记到 gw:172.27.255.254
-python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 check
+scout --domain n43ds.chhbuv.cn --port 61750 check
 ```
 
 也可以手动命名：
 
 ```bash
-python3 -m clash_ip_tracker --domain <域名> --env home check
-python3 -m clash_ip_tracker --domain <域名> --env campus check
-python3 -m clash_ip_tracker --domain <域名> --env hotspot check
+scout --domain <域名> --env home check
+scout --domain <域名> --env campus check
+scout --domain <域名> --env hotspot check
 ```
 
 ### 采样 + 探测 + 报告
 
 ```bash
 # 自动从 Verge 读当前订阅的域名和端口（推荐，省得手输）
-python3 -m clash_ip_tracker --from-clash --env hotspot check
+scout --from-clash --env hotspot check
 
 # 或者手动指定
-python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 --env hotspot check
+scout --domain n43ds.chhbuv.cn --port 61750 --env hotspot check
 ```
 
 > **注意端口**：同一个订阅里，不同节点可能用不同端口（如 `28537`、`61750`），
@@ -101,7 +101,7 @@ IP               状态       成功/失败      成功率     延迟       最�
 ### 看当前用的是哪个 IP（最实用的诊断）
 
 ```bash
-python3 -m clash_ip_tracker --from-clash current
+scout --from-clash current
 ```
 
 ```
@@ -127,7 +127,7 @@ Clash 当前建立了 1 个连接，对端 IP：
 ### 跨环境对比（这个最有价值）
 
 ```bash
-python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn compare
+scout --domain n43ds.chhbuv.cn compare
 ```
 
 ```
@@ -146,16 +146,16 @@ IP               home       campus     hotspot    结论
 
 ```bash
 # 只采样 DNS，不做端口探测（最轻）
-python3 -m clash_ip_tracker --domain <域名> sample
+scout --domain <域名> sample
 
 # 只看表，完全不联网
-python3 -m clash_ip_tracker --domain <域名> report
+scout --domain <域名> report
 
 # 只输出推荐 IP（给脚本用）
-python3 -m clash_ip_tracker --domain <域名> best
+scout --domain <域名> best
 
 # 列出所有环境
-python3 -m clash_ip_tracker --domain <域名> compare
+scout --domain <域名> compare
 ```
 
 ---
