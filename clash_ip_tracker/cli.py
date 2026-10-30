@@ -432,7 +432,7 @@ def cmd_compare(args: argparse.Namespace, cfg: dict) -> int:
     """对比同一个域名在不同网络环境下的表现。"""
     domain, _ = _target(args, cfg)
     with store.locked(_data_path(cfg)) as table:
-        print(report.render_compare(table, domain))
+        print(report.render_compare(table, domain, show_time=args.time))
     return 0
 
 
@@ -543,6 +543,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_airports.set_defaults(func=cmd_airports)
 
     p_compare = sub.add_parser("compare", help="对比不同网络环境下同一个域名的 IP 状态")
+    p_compare.add_argument("--time", action="store_true", help="显示完整检测时间（默认只标超过 1 小时的）")
     p_compare.set_defaults(func=cmd_compare)
 
     p_current = sub.add_parser("current", help="看 Clash 当前实际连的是哪个 IP，并对照表")

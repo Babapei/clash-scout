@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import unicodedata
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import store
@@ -60,6 +61,28 @@ def _fmt_time(value: str | None) -> str:
     if dt is None:
         return "-"
     return dt.strftime("%m-%d %H:%M")
+
+
+def relative_age(iso_str: str | None, *, show_all: bool = False) -> str:
+    """返回数据年龄的简短表示。
+
+    - 1 小时内：返回空字符串（不显示，默认数据是新鲜的）
+    - 1 小时 ~ 1 天：返回 "3h前"
+    - 超过 1 天：返回 "2d前"
+    - show_all=True：返回完整时间 "10-30 22:12"
+    """
+    dt = store.parse_iso(iso_str)
+    if dt is None:
+        return ""
+    if show_all:
+        return dt.strftime("%m-%d %H:%M")
+    now = datetime.now(timezone.utc).astimezone()
+    seconds = (now - dt).total_seconds()
+    if seconds < 3600:
+        return ""
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h前"
+    return f"{(now - dt).days}d前"
 
 
 def _fmt_rate(rec: dict[str, Any]) -> str:
@@ -175,7 +198,7 @@ def render(
 # ---------------------------------------------------------------- 跨环境对比
 
 
-def render_compare(table: dict[str, Any], domain: str) -> str:
+def render_compare(table: dict[str, Any], domain: str, *, show_time: bool = False) -> str:
     """跨环境对比同一个域名的 IP 状态。"""
     envs = list(table["environments"].items())
     if not envs:
@@ -192,32 +215,24 @@ def render_compare(table: dict[str, Any], domain: str) -> str:
     if not ip_to_envs:
         return f"没有任何环境记录过域名 {domain}。"
 
-    # 列宽：按最长 label 的显示宽度算
     env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs]
-    label_widths = [max(display_width(label), 8) for _, label in env_cols]
 
-    lines: list[str] = []
-    lines.append(f"域名: {domain}    对比 {len(env_cols)} 个环境")
-    lines.append("")
-
-    header = pad("IP", 16) + "  " + "  ".join(
-        pad(label, w) for (_, label), w in zip(env_cols, label_widths)
-    ) + "  结论"
-    lines.append(header)
-    lines.append("-" * (display_width(header) + 2))
-
+    # 先把每一行的单元格和结论算好，再根据内容决定列宽
+    rows: list[tuple[str, list[str], str]] = []
     for ip in sorted(ip_to_envs):
-        row = ip_to_envs[ip]
-        cells = []
-        marks = []
+        env_map = ip_to_envs[ip]
+        cells: list[str] = []
+        marks: list[str | None] = []
         for env_id, _ in env_cols:
-            rec = row.get(env_id)
+            rec = env_map.get(env_id)
             if rec is None:
                 cells.append("-")
                 marks.append(None)
             else:
                 marks.append(rec.get("status"))
-                cells.append(STATUS_MARK.get(rec.get("status"), "?"))
+                base = STATUS_MARK.get(rec.get("status"), "?")
+                age = relative_age(rec.get("last_check"), show_all=show_time)
+                cells.append(f"{base} ({age})" if age else base)
 
         known = [m for m in marks if m is not None]
         if known and all(m == store.ALIVE for m in known):
@@ -228,13 +243,32 @@ def render_compare(table: dict[str, Any], domain: str) -> str:
             verdict = "部分环境被封"
         else:
             verdict = "待观察"
+        rows.append((ip, cells, verdict))
 
+    # 列宽 = max(表头宽度, 该列所有单元格宽度)
+    widths: list[int] = []
+    for idx, (_, label) in enumerate(env_cols):
+        content = max(display_width(r[1][idx]) for r in rows)
+        widths.append(max(display_width(label), content, 8))
+
+    lines: list[str] = []
+    lines.append(f"域名: {domain}    对比 {len(env_cols)} 个环境")
+    lines.append("")
+
+    header = pad("IP", 18) + "  " + "  ".join(
+        pad(label, w) for (_, label), w in zip(env_cols, widths)
+    ) + "  结论"
+    lines.append(header)
+    lines.append("-" * display_width(header))
+
+    for ip, cells, verdict in rows:
         lines.append(
-            pad(ip, 16) + "  " + "  ".join(
-                pad(c, w) for c, w in zip(cells, label_widths)
+            pad(ip, 18) + "  " + "  ".join(
+                pad(c, w) for c, w in zip(cells, widths)
             ) + f"  {verdict}"
         )
 
     lines.append("")
     lines.append("符号: OK=alive  X=dead  ~=flaky  ?=unknown  -=该环境没见过")
+    lines.append("括号内是数据年龄，1 小时内的不显示（默认视为新鲜）")
     return "\n".join(lines)
