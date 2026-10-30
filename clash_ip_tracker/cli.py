@@ -430,65 +430,98 @@ def cmd_forget(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
-def cmd_alias(args: argparse.Namespace, cfg: dict) -> int:
-    """给环境或机场设置显示名（只影响显示，不影响内部标识）。"""
+def cmd_env(args: argparse.Namespace, cfg: dict) -> int:
+    """给网络环境设置显示名。"""
     path = _data_path(cfg)
-
     with store.locked(path) as table:
-        if args.list:
-            rows = store.list_aliases(table)
-            if not rows:
-                print("表里还没有数据。")
-                return 0
-            header = f"{'类型':<16} {'内部标识':<26} {'显示名':<16} 已改名"
-            print(header)
-            print("-" * len(header))
-            for kind, ident, label, renamed in rows:
-                print(f"{kind:<16} {ident:<26} {label:<16} {renamed}")
-            return 0
-
-        name = args.name or args.env or args.domain
-        if not name:
-            print("用法：")
-            print("  scout alias 家                  给当前网络起名")
-            print("  scout alias --domain 红杏云      给当前机场起名")
-            print("  scout alias --list              列出所有别名")
-            return 1
-
-        if args.domain:
-            # 给机场（域名）起名
-            domain = args.id
-            if not domain:
-                try:
-                    domain, _, _ = clash_config.resolve_target()
-                except clash_config.ClashConfigError as exc:
-                    print(f"错误：{exc}\n用 --id 指定域名")
-                    return 1
-            found = False
-            for env_id, env in table["environments"].items():
-                node = env["domains"].get(domain)
-                if node is not None:
-                    store.set_domain_alias(node, name)
-                    found = True
-            if not found:
-                print(f"表里没有域名 {domain}，先跑一次 check。")
-                return 1
-            print(f"✅ 机场 {domain} → 显示为「{name}」")
-            return 0
-
-        # 给环境起名
         env_id = args.id
         if not env_id:
             gateway = detect_gateway()
             env_id = f"gw:{gateway}" if gateway else "unknown"
         env = table["environments"].get(env_id)
+
+        if args.clear:
+            if env is None:
+                print(f"表里没有环境 {env_id}")
+                return 1
+            env.pop("label", None)
+            print(f"✅ 环境 {env_id} 已恢复原始显示")
+            return 0
+
+        if not args.name:
+            if env is None:
+                print(f"当前环境 {env_id} 还没记录过数据")
+                return 0
+            print(f"当前环境: {env_id} → 显示为「{env.get('label') or env_id}」")
+            return 0
+
         if env is None:
             known = ", ".join(table["environments"].keys()) or "（空）"
             print(f"表里没有环境 {env_id}。现有：{known}")
-            print("用 --id 指定环境，或者先跑一次 check。")
+            print("用 --id 指定，或者先跑一次 check。")
             return 1
-        store.set_env_label(env, name)
-        print(f"✅ 环境 {env_id} → 显示为「{name}」")
+        store.set_env_label(env, args.name)
+        print(f"✅ 环境 {env_id} → 显示为「{args.name}」")
+    return 0
+
+
+def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
+    """给机场设置显示名。"""
+    domain = args.id
+    if not domain:
+        try:
+            domain, _, _ = clash_config.resolve_target()
+        except clash_config.ClashConfigError as exc:
+            print(f"错误：{exc}")
+            print("用 --id 指定域名")
+            return 1
+
+    path = _data_path(cfg)
+    with store.locked(path) as table:
+        nodes = []
+        for env in table["environments"].values():
+            node = env["domains"].get(domain)
+            if node is not None:
+                nodes.append(node)
+
+        if args.clear:
+            if not nodes:
+                print(f"表里没有域名 {domain}")
+                return 1
+            for node in nodes:
+                node.pop("alias", None)
+            print(f"✅ 机场 {domain} 已恢复原始显示")
+            return 0
+
+        if not args.name:
+            if not nodes:
+                print(f"表里没有域名 {domain}，先跑一次 check")
+            else:
+                print(f"当前机场: {domain} → 显示为「{nodes[0].get('alias') or domain}」")
+            return 0
+
+        if not nodes:
+            print(f"表里没有域名 {domain}，先跑一次 check")
+            return 1
+        for node in nodes:
+            store.set_domain_alias(node, args.name)
+        print(f"✅ 机场 {domain} → 显示为「{args.name}」")
+    return 0
+
+
+def cmd_alias(args: argparse.Namespace, cfg: dict) -> int:
+    """列出所有别名。"""
+    path = _data_path(cfg)
+    with store.locked(path) as table:
+        rows = store.list_aliases(table)
+        if not rows:
+            print("表里还没有数据。")
+            return 0
+        header = f"{'类型':<16} {'内部标识':<26} {'显示名':<16} 已改名"
+        print(header)
+        print("-" * len(header))
+        for kind, ident, label, renamed in rows:
+            print(f"{kind:<16} {ident:<26} {label:<16} {renamed}")
     return 0
 
 
@@ -656,12 +689,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_forget.add_argument("--domain", help="要删除的域名")
     p_forget.set_defaults(func=cmd_forget)
 
-    p_alias = sub.add_parser("alias", help="给环境/机场设置显示名")
-    p_alias.add_argument("name", nargs="?", help="给当前环境起的名字")
-    p_alias.add_argument("--env", help="给环境起名")
-    p_alias.add_argument("--domain", help="给机场起名")
-    p_alias.add_argument("--id", help="指定内部标识（环境 id 或域名）")
-    p_alias.add_argument("--list", action="store_true", help="列出所有别名")
+    p_env = sub.add_parser("env", help="给网络环境设置显示名")
+    p_env.add_argument("name", nargs="?", help="新名字；不填则显示当前")
+    p_env.add_argument("--clear", action="store_true", help="恢复原始显示")
+    p_env.add_argument("--id", help="指定环境 id（如 gw:192.168.30.1）")
+    p_env.set_defaults(func=cmd_env)
+
+    p_airport = sub.add_parser("airport", help="给机场设置显示名")
+    p_airport.add_argument("name", nargs="?", help="新名字；不填则显示当前")
+    p_airport.add_argument("--clear", action="store_true", help="恢复原始显示")
+    p_airport.add_argument("--id", help="指定域名")
+    p_airport.set_defaults(func=cmd_airport)
+
+    p_alias = sub.add_parser("alias", help="列出所有别名")
     p_alias.set_defaults(func=cmd_alias)
 
     p_ui = sub.add_parser("ui", help="打开终端界面（需要 textual）")

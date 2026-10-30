@@ -175,22 +175,32 @@ scout forget --ip 1.2.3.4
 scout forget --domain old-airport.com
 
 # 给环境 / 机场起别名（只影响显示）
-scout alias 家
-scout alias --domain 红杏云
-scout alias --list
+scout env 家
+scout airport 红杏云
+scout alias
 
 # 打开终端界面（需要先装 textual）
 scout ui
 ```
 
-### 别名（`scout alias`）
+### 别名（`scout env` / `scout airport`）
 
 网络和机场多了以后，`gw:192.168.30.1`、`n43ds.chhbuv.cn` 不好记，可以起别名：
 
 ```bash
-scout alias 家                    # 给当前网络起名
-scout alias --domain 红杏云        # 给当前机场起名
-scout alias --list               # 列出所有别名
+scout env 家                  # 给当前网络起名
+scout airport 红杏云           # 给当前机场起名
+scout alias                  # 列出所有别名
+
+scout env --clear             # 当前环境恢复原始显示
+scout airport --clear         # 当前机场恢复原始显示
+```
+
+不填名字时只显示当前值：
+
+```bash
+scout env                    # 当前环境: gw:192.168.30.1 → 显示为「家」
+scout airport                # 当前机场: n43ds.chhbuv.cn → 显示为「红杏云」
 ```
 
 **内部标识不变，只改显示**：
@@ -233,7 +243,7 @@ scout ui
 | `c` | 检查一轮（探测所有 IP） |
 | `q` | 退出 |
 
-**别名 Tab 里改名**：选中一行按 `e`，弹窗里输入新名字回车保存；留空回车 = 恢复原始值（`gw:...` / 域名）。命令行 `scout alias` 依然可用。
+**别名 Tab 里改名**：选中一行按 `e`，弹窗里输入新名字回车保存；留空回车 = 恢复原始值（`gw:...` / 域名）。命令行 `scout env` / `scout airport` 依然可用。
 
 当前正在连接的 IP 前面标 `●`。每 30 秒自动刷新一次。
 
