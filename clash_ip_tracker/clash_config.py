@@ -1,4 +1,8 @@
-"""从 Clash Verge 配置里读出当前订阅的节点域名和端口。"""
+"""从 Clash Verge 配置里读出当前订阅的节点域名和端口。
+
+优先用「当前选中的节点」的 server/port，而不是统计最多的那个——
+因为订阅里不同节点可能用不同端口，Clash 实际只用选中的那个。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ def find_verge_dir() -> Path | None:
     candidates = [
         Path.home() / "Library/Application Support" / APP_DIR_NAME,  # macOS
         Path.home() / ".config" / APP_DIR_NAME,                      # Linux
-        Path(os.environ.get("APPDATA", "")) / APP_DIR_NAME,          # Windows
+        Path(os.environ.get("APPDATA", "") or "~") / APP_DIR_NAME,   # Windows
     ]
     for candidate in candidates:
         if candidate.is_dir():
@@ -30,26 +34,26 @@ def find_verge_dir() -> Path | None:
 def _load_yaml(path: Path) -> Any:
     try:
         import yaml
-    except ImportError as exc:  # pragma: no cover - 环境问题
+    except ImportError as exc:  # pragma: no cover
         raise ClashConfigError("需要 PyYAML：pip3 install pyyaml") from exc
     try:
         with path.open(encoding="utf-8") as fh:
             return yaml.safe_load(fh)
     except OSError as exc:
         raise ClashConfigError(f"读取失败 {path}：{exc}") from exc
-    except Exception as exc:  # yaml 解析错误
+    except Exception as exc:
         raise ClashConfigError(f"YAML 解析失败 {path}：{exc}") from exc
 
 
-def current_profile(verge_dir: Path) -> tuple[str, Path] | None:
-    """返回 (订阅名, profile 文件路径)。"""
+def current_profile(verge_dir: Path) -> tuple[str, Path, set[str]]:
+    """返回 (订阅名, profile 路径, 当前选中节点名集合)。"""
     profiles_yaml = verge_dir / "profiles.yaml"
     if not profiles_yaml.exists():
-        return None
+        raise ClashConfigError(f"找不到 {profiles_yaml}")
     data = _load_yaml(profiles_yaml) or {}
     current = data.get("current")
     if not current:
-        return None
+        raise ClashConfigError("profiles.yaml 里没有 current")
     for item in data.get("items") or []:
         if not isinstance(item, dict) or item.get("uid") != current:
             continue
@@ -57,40 +61,48 @@ def current_profile(verge_dir: Path) -> tuple[str, Path] | None:
         if not file_name:
             continue
         path = verge_dir / "profiles" / file_name
-        if path.exists():
-            return item.get("name") or current, path
-    return None
-
-
-def extract_target(profile_path: Path) -> tuple[str, int] | None:
-    """统计节点里出现最多的 (server, port) 组合。"""
-    data = _load_yaml(profile_path) or {}
-    counter: Counter[tuple[str, int]] = Counter()
-    for proxy in data.get("proxies") or []:
-        if not isinstance(proxy, dict):
+        if not path.exists():
             continue
+        selected = {
+            entry.get("now")
+            for entry in (item.get("selected") or [])
+            if isinstance(entry, dict) and entry.get("now")
+        }
+        return item.get("name") or current, path, selected
+    raise ClashConfigError("profiles.yaml 里找不到当前订阅的 profile 文件")
+
+
+def extract_target(profile_path: Path, selected_names: set[str] | None = None) -> tuple[str, int, str]:
+    """返回 (domain, port, 依据说明)。
+
+    优先使用当前选中节点的 server/port；没有选中信息时退回“出现最多的组合”。
+    """
+    data = _load_yaml(profile_path) or {}
+    proxies = [p for p in (data.get("proxies") or []) if isinstance(p, dict)]
+
+    if selected_names:
+        for proxy in proxies:
+            if proxy.get("name") in selected_names:
+                server, port = proxy.get("server"), proxy.get("port")
+                if isinstance(server, str) and isinstance(port, int):
+                    return server, port, f"选中节点「{proxy['name']}」"
+
+    counter: Counter[tuple[str, int]] = Counter()
+    for proxy in proxies:
         server, port = proxy.get("server"), proxy.get("port")
         if isinstance(server, str) and isinstance(port, int):
             counter[(server, port)] += 1
     if not counter:
-        return None
-    (server, port), _ = counter.most_common(1)[0]
-    return server, port
+        raise ClashConfigError("订阅里没有可用的 server/port")
+    (server, port), count = counter.most_common(1)[0]
+    return server, port, f"出现最多的组合（{count} 个节点）"
 
 
 def resolve_target(verge_dir: Path | None = None) -> tuple[str, int, str]:
-    """返回 (domain, port, 订阅名)。
-
-    读不到时抛 ClashConfigError。
-    """
+    """返回 (domain, port, 来源说明)。读不到时抛 ClashConfigError。"""
     vd = verge_dir or find_verge_dir()
     if vd is None:
         raise ClashConfigError("找不到 Clash Verge 配置目录")
-    found = current_profile(vd)
-    if found is None:
-        raise ClashConfigError("profiles.yaml 里没有当前订阅")
-    name, path = found
-    target = extract_target(path)
-    if target is None:
-        raise ClashConfigError(f"订阅 {name} 里没有可用的 server/port")
-    return target[0], target[1], name
+    name, path, selected = current_profile(vd)
+    domain, port, basis = extract_target(path, selected)
+    return domain, port, f"订阅「{name}」，{basis}"

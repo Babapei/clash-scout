@@ -44,6 +44,35 @@ def resolve_env(args: argparse.Namespace) -> tuple[str, str]:
     return "unknown", "unknown"
 
 
+def current_connections(port: int) -> set[str]:
+    """从 netstat 里读出当前到某端口的已建立连接的对端 IP。"""
+    try:
+        result = subprocess.run(
+            ["netstat", "-an", "-p", "tcp"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return set()
+
+    marker = f".{port}"
+    ips: set[str] = set()
+    for line in result.stdout.splitlines():
+        if marker not in line or "ESTABLISHED" not in line:
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        remote = parts[4]
+        if not remote.endswith(marker):
+            continue
+        ip = remote[: -len(marker)]
+        if ip:
+            ips.add(ip)
+    return ips
+
+
 # ---------------------------------------------------------------- 参数解析
 
 
@@ -58,11 +87,12 @@ def _target(args: argparse.Namespace, cfg: dict) -> tuple[str, int]:
 
     if args.from_clash:
         try:
-            domain, port, name = clash_config.resolve_target()
+            domain, port, info = clash_config.resolve_target()
         except clash_config.ClashConfigError as exc:
             print(f"错误：{exc}", file=sys.stderr)
             raise SystemExit(2)
-        print(f"从 Verge 读到订阅「{name}」→ {domain}:{port}")
+        print(f"从 Verge 读取：{info}")
+        print(f"  → {domain}:{port}")
         return domain, int(args.port or port)
 
     domain = cfg.get("domain")
@@ -202,6 +232,59 @@ def cmd_compare(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_current(args: argparse.Namespace, cfg: dict) -> int:
+    """看 Clash 此刻实际连的是哪个 IP，并对照表里的历史。"""
+    domain, port = _target(args, cfg)
+    env_id, label = resolve_env(args)
+    conns = current_connections(port)
+
+    if not conns:
+        print(f"当前没有到端口 {port} 的活动连接。")
+        print("可能原因：没在用代理、TUN/系统代理都没开、或端口不是这个。")
+        return 1
+
+    path = _data_path(cfg)
+    timeout = cfg["probe_timeout"]
+    with store.locked(path) as table:
+        node = store.find_domain(table, env_id, domain)
+        if node is None:
+            env = store.get_environment(table, env_id, label)
+            node = store.get_domain(env, domain, port)
+
+        print(f"环境: {label}    端口: {port}")
+        print(f"Clash 当前建立了 {len(conns)} 个连接，对端 IP：")
+        print()
+
+        healthy = 0
+        for ip in sorted(conns):
+            rec = node["ips"].get(ip)
+            if rec is None:
+                # 表里没见过：当场探一次，顺手记进表
+                ok, latency = port_probe.tcp_probe(ip, port, timeout)
+                rec = store.upsert_seen(node, ip)
+                store.apply_probe(rec, ok=ok, latency_ms=latency)
+                ms = f"{latency:.0f}ms" if latency else "-"
+                print(f"  {ip:<16} 新 IP → 实时探测 {'OK' if ok else 'DEAD'}  {ms}")
+                if ok:
+                    healthy += 1
+                continue
+
+            rate = store.success_rate(rec)
+            rate_txt = f"{rate * 100:.0f}%" if rate is not None else "-"
+            latency = f"{rec['latency_ms']:.0f}ms" if rec.get("latency_ms") else "-"
+            status = rec.get("status", "?")
+            print(f"  {ip:<16} {status:<8} 成功率 {rate_txt:<5} 延迟 {latency}")
+            if status in (store.ALIVE, store.FLAKY):
+                healthy += 1
+
+        print()
+        if healthy > 0:
+            print("结论：当前连的是健康 IP。如果上网还卡，问题不在 IP，去查 WiFi / 线路。")
+        else:
+            print("结论：当前连的 IP 都不健康。重载配置让它重新解析，或换网络。")
+    return 0
+
+
 # ---------------------------------------------------------------- 组装
 
 
@@ -242,6 +325,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_compare = sub.add_parser("compare", help="对比不同网络环境下同一个域名的 IP 状态")
     p_compare.set_defaults(func=cmd_compare)
+
+    p_current = sub.add_parser("current", help="看 Clash 当前实际连的是哪个 IP，并对照表")
+    p_current.set_defaults(func=cmd_current)
 
     return parser
 
