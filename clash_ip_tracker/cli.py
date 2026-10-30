@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -242,10 +243,56 @@ def _scheduler_paths() -> tuple[Path, Path, Path, Path]:
 
 
 def cmd_auto(args: argparse.Namespace, cfg: dict) -> int:
-    """开启或关闭自动记录。"""
+    """查看 / 开启 / 关闭自动记录。"""
+    if args.action == "status":
+        return cmd_auto_status(cfg)
     if args.action == "off":
         return cmd_uninstall_scheduler(args, cfg)
     return cmd_install_scheduler(args, cfg)
+
+
+def cmd_auto_status(cfg: dict) -> int:
+    """显示定时任务的当前状态。"""
+    plist, wrapper, app_dir, log_dir = _scheduler_paths()
+
+    if not plist.exists():
+        print("自动记录：未开启")
+        print("  开启：scout auto on")
+        return 0
+
+    print("自动记录：已开启")
+
+    # 是否被 launchd 加载
+    try:
+        listing = subprocess.run(["launchctl", "list"], capture_output=True, text=True, timeout=5)
+        loaded = SCHEDULER_LABEL in listing.stdout
+    except (subprocess.TimeoutExpired, OSError):
+        loaded = False
+    print(f"  状态：{'已加载' if loaded else '未加载（可能被系统卸载，重跑 scout auto on）'}")
+
+    # 间隔
+    try:
+        text = plist.read_text()
+        match = re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", text)
+        if match:
+            print(f"  间隔：每 {int(match.group(1)) // 60} 分钟")
+    except OSError:
+        pass
+
+    # 上次运行
+    log = log_dir / "scheduler.log"
+    if log.exists():
+        try:
+            lines = [ln for ln in log.read_text().splitlines() if "开始记录" in ln or "跳过" in ln]
+            if lines:
+                print(f"  上次运行：{lines[-1]}")
+        except OSError:
+            pass
+
+    print(f"  日志：{log}")
+    print(f"  运行副本：{app_dir}")
+    print("  关闭：scout auto off")
+    return 0
 
 
 def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
@@ -528,8 +575,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_best.set_defaults(func=cmd_best)
 
     p_auto = sub.add_parser("auto", help="开启/关闭自动记录（macOS 定时任务）")
-    p_auto.add_argument("action", nargs="?", choices=["on", "off"], default="on",
-                        help="on 开启（默认），off 关闭")
+    p_auto.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status",
+                        help="status 查看状态（默认），on 开启，off 关闭")
     p_auto.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
     p_auto.set_defaults(func=cmd_auto)
 

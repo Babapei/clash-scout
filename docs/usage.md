@@ -159,9 +159,21 @@ scout forget --domain old-airport.com
 这是内建命令，`scout --help` 里能看到。
 
 ```bash
-scout auto              # 开启，默认每 10 分钟
-scout auto --every 30   # 改成每 30 分钟
-scout auto off          # 关闭
+scout auto               # 查看状态（是否加载、间隔、上次运行时间）
+scout auto on            # 开启，默认每 10 分钟
+scout auto on --every 30 # 改成每 30 分钟
+scout auto off           # 关闭
+```
+
+状态输出示例：
+
+```
+自动记录：已开启
+  状态：已加载
+  间隔：每 10 分钟
+  上次运行：2026-10-30 22:29:26 开始记录
+  日志：/Users/xxx/.clash-ip-tracker/scheduler.log
+  关闭：scout auto off
 ```
 
 它做三件事：
