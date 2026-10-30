@@ -1,4 +1,26 @@
-"""数据存储：JSON 表 + 文件锁 + 状态机。"""
+"""数据存储：JSON 表 + 文件锁 + 状态机。
+
+表结构（v2，按网络环境分层）：
+
+{
+  "version": 2,
+  "environments": {
+    "gw:192.168.30.1": {
+      "label": "home",
+      "first_seen": "...",
+      "last_seen": "...",
+      "domains": {
+        "n43ds.chhbuv.cn": {
+          "ports": [61750],
+          "first_seen": "...",
+          "updated_at": "...",
+          "ips": { "<ip>": { ...ip record... } }
+        }
+      }
+    }
+  }
+}
+"""
 
 from __future__ import annotations
 
@@ -10,7 +32,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # 状态枚举
 UNKNOWN = "unknown"
@@ -33,7 +55,7 @@ def parse_iso(value: str | None) -> datetime | None:
 
 
 def empty_table() -> dict[str, Any]:
-    return {"version": SCHEMA_VERSION, "domains": {}}
+    return {"version": SCHEMA_VERSION, "environments": {}}
 
 
 def new_ip_record() -> dict[str, Any]:
@@ -50,6 +72,31 @@ def new_ip_record() -> dict[str, Any]:
         "latency_ms": None,
         "stale": False,
     }
+
+
+# ---------------------------------------------------------------- 迁移
+
+
+def migrate(data: dict[str, Any]) -> dict[str, Any]:
+    """把 v1（顶层 domains）迁移到 v2（environment 下的 domains）。"""
+    if data.get("version") == SCHEMA_VERSION and "environments" in data:
+        return data
+    if "domains" in data:
+        return {
+            "version": SCHEMA_VERSION,
+            "environments": {
+                "unknown": {
+                    "label": "unknown(v1)",
+                    "first_seen": now_iso(),
+                    "last_seen": now_iso(),
+                    "domains": data["domains"],
+                }
+            },
+        }
+    return empty_table()
+
+
+# ---------------------------------------------------------------- 读写
 
 
 @contextmanager
@@ -74,7 +121,6 @@ def _read(path: Path) -> dict[str, Any]:
         with path.open(encoding="utf-8") as fh:
             data = json.load(fh)
     except (OSError, json.JSONDecodeError):
-        # 损坏时不覆盖用户数据，先备份
         backup = path.with_suffix(path.suffix + ".broken")
         try:
             path.rename(backup)
@@ -82,10 +128,9 @@ def _read(path: Path) -> dict[str, Any]:
         except OSError:
             pass
         return empty_table()
-    if not isinstance(data, dict) or "domains" not in data:
+    if not isinstance(data, dict):
         return empty_table()
-    data.setdefault("version", SCHEMA_VERSION)
-    return data
+    return migrate(data)
 
 
 def _write(path: Path, table: dict[str, Any]) -> None:
@@ -95,8 +140,29 @@ def _write(path: Path, table: dict[str, Any]) -> None:
     os.replace(tmp, path)
 
 
-def get_domain(table: dict[str, Any], domain: str, port: int) -> dict[str, Any]:
-    node = table["domains"].setdefault(
+# ---------------------------------------------------------------- 分层访问
+
+
+def get_environment(table: dict[str, Any], env_id: str, label: str | None = None) -> dict[str, Any]:
+    """取（或创建）一个网络环境节点。"""
+    env = table["environments"].setdefault(
+        env_id,
+        {
+            "label": label or env_id,
+            "first_seen": now_iso(),
+            "last_seen": now_iso(),
+            "domains": {},
+        },
+    )
+    env["last_seen"] = now_iso()
+    if label:
+        env["label"] = label
+    return env
+
+
+def get_domain(env: dict[str, Any], domain: str, port: int) -> dict[str, Any]:
+    """取（或创建）某个环境下的域名节点。"""
+    node = env["domains"].setdefault(
         domain,
         {"ports": [], "first_seen": now_iso(), "updated_at": now_iso(), "ips": {}},
     )
@@ -104,6 +170,25 @@ def get_domain(table: dict[str, Any], domain: str, port: int) -> dict[str, Any]:
         node["ports"].append(port)
     node["updated_at"] = now_iso()
     return node
+
+
+def find_domain(table: dict[str, Any], env_id: str, domain: str) -> dict[str, Any] | None:
+    env = table["environments"].get(env_id)
+    if not env:
+        return None
+    return env["domains"].get(domain)
+
+
+def all_domains(table: dict[str, Any]) -> list[str]:
+    seen: list[str] = []
+    for env in table["environments"].values():
+        for domain in env["domains"]:
+            if domain not in seen:
+                seen.append(domain)
+    return seen
+
+
+# ---------------------------------------------------------------- IP 记录
 
 
 def upsert_seen(node: dict[str, Any], ip: str) -> dict[str, Any]:
@@ -132,7 +217,6 @@ def apply_probe(
         rec["consecutive_fail"] = 0
         rec["last_ok"] = now_iso()
         rec["latency_ms"] = round(latency_ms, 1) if latency_ms is not None else rec.get("latency_ms")
-        # 最近失败过但现在通了 → 判定为 flaky
         last_fail = parse_iso(rec.get("last_fail"))
         window = timedelta(minutes=flaky_window_minutes)
         if last_fail and datetime.now(timezone.utc).astimezone() - last_fail <= window:

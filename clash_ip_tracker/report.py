@@ -1,4 +1,4 @@
-"""输出：表格、最佳 IP 选择。"""
+"""输出：单环境表格、跨环境对比、最佳 IP 选择。"""
 
 from __future__ import annotations
 
@@ -11,6 +11,13 @@ STATUS_LABEL = {
     store.DEAD: "dead",
     store.FLAKY: "flaky",
     store.UNKNOWN: "unknown",
+}
+
+STATUS_MARK = {
+    store.ALIVE: "OK",
+    store.DEAD: "X",
+    store.FLAKY: "~",
+    store.UNKNOWN: "?",
 }
 
 
@@ -31,11 +38,7 @@ def _fmt_rate(rec: dict[str, Any]) -> str:
 def pick_best(node: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     """挑最值得用的 IP。
 
-    排序优先级：
-      1. 不是 stale
-      2. status 为 alive（flaky 次之，dead/unknown 排除）
-      3. 成功率高的优先
-      4. 延迟低的优先
+    优先级：非 stale > alive > flaky > 成功率高 > 延迟低
     """
     candidates = [
         (ip, rec)
@@ -46,7 +49,7 @@ def pick_best(node: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
         return None
 
     def score(item: tuple[str, dict[str, Any]]) -> tuple:
-        ip, rec = item
+        _, rec = item
         rate = store.success_rate(rec) or 0.0
         alive_bonus = 1 if rec.get("status") == store.ALIVE else 0
         latency = rec.get("latency_ms") or 9999
@@ -55,9 +58,16 @@ def pick_best(node: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     return sorted(candidates, key=score, reverse=True)[0]
 
 
-def render(node: dict[str, Any], domain: str, port: int, *, sample_counts: dict[str, int] | None = None, limit: int = 30) -> str:
+def render(
+    env: dict[str, Any],
+    node: dict[str, Any],
+    domain: str,
+    port: int,
+    *,
+    sample_counts: dict[str, int] | None = None,
+    limit: int = 30,
+) -> str:
     ips = list(node["ips"].items())
-    # 排序：活的在前、成功率高的在前
     ips.sort(
         key=lambda kv: (
             0 if kv[1].get("status") == store.ALIVE else 1 if kv[1].get("status") == store.FLAKY else 2,
@@ -67,11 +77,9 @@ def render(node: dict[str, Any], domain: str, port: int, *, sample_counts: dict[
     )
 
     lines: list[str] = []
-    lines.append(f"域名: {domain}    端口: {port}")
+    lines.append(f"环境: {env.get('label', '?')}    域名: {domain}    端口: {port}")
     if sample_counts is not None:
-        lines.append(
-            f"本轮 DNS 采样发现 {len(sample_counts)} 个 IP，表内共 {len(node['ips'])} 个"
-        )
+        lines.append(f"本轮 DNS 采样发现 {len(sample_counts)} 个 IP，本环境共记录 {len(node['ips'])} 个")
     alive = sum(1 for _, r in ips if r.get("status") == store.ALIVE and not r.get("stale"))
     flaky = sum(1 for _, r in ips if r.get("status") == store.FLAKY and not r.get("stale"))
     dead = sum(1 for _, r in ips if r.get("status") == store.DEAD and not r.get("stale"))
@@ -79,7 +87,10 @@ def render(node: dict[str, Any], domain: str, port: int, *, sample_counts: dict[
     lines.append(f"状态统计: 活 {alive} / 时好时坏 {flaky} / 死 {dead} / 陈旧 {stale}")
     lines.append("")
 
-    header = f"{'IP':<16} {'状态':<8} {'成功/失败':<10} {'成功率':<7} {'延迟':<8} {'最后检测':<12} {'最后可用':<12}"
+    header = (
+        f"{'IP':<16} {'状态':<8} {'成功/失败':<10} {'成功率':<7} "
+        f"{'延迟':<8} {'最后检测':<12} {'最后可用':<12}"
+    )
     lines.append(header)
     lines.append("-" * len(header))
     for ip, rec in ips[:limit]:
@@ -100,6 +111,65 @@ def render(node: dict[str, Any], domain: str, port: int, *, sample_counts: dict[
         ip, rec = best
         lines.append(f"推荐 IP: {ip}  (成功率 {_fmt_rate(rec)}，延迟 {rec.get('latency_ms') or '-'}ms)")
     else:
-        lines.append("推荐 IP: 无（当前没有可用 IP）")
+        lines.append("推荐 IP: 无（当前环境没有可用 IP）")
 
+    return "\n".join(lines)
+
+
+def render_compare(table: dict[str, Any], domain: str) -> str:
+    """跨环境对比同一个域名的 IP 状态。"""
+    envs = list(table["environments"].items())
+    if not envs:
+        return "表里还没有任何环境数据。"
+
+    ip_to_envs: dict[str, dict[str, dict[str, Any]]] = {}
+    for env_id, env in envs:
+        node = env["domains"].get(domain)
+        if not node:
+            continue
+        for ip, rec in node["ips"].items():
+            ip_to_envs.setdefault(ip, {})[env_id] = rec
+
+    if not ip_to_envs:
+        return f"没有任何环境记录过域名 {domain}。"
+
+    # 列宽：IP + 每个环境（按最长 label 动态算）
+    env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs]
+    col_width = max(len(label) for _, label in env_cols) + 2
+    lines: list[str] = []
+    lines.append(f"域名: {domain}    对比 {len(env_cols)} 个环境")
+    lines.append("")
+
+    header = f"{'IP':<16}" + "".join(f" {label:<{col_width - 1}}" for _, label in env_cols) + "  结论"
+    lines.append(header)
+    lines.append("-" * (len(header) + 6))
+
+    for ip in sorted(ip_to_envs):
+        row = ip_to_envs[ip]
+        cells = []
+        marks = []
+        for env_id, _ in env_cols:
+            rec = row.get(env_id)
+            if rec is None:
+                cells.append("-")
+                marks.append(None)
+            else:
+                mark = STATUS_MARK.get(rec.get("status"), "?")
+                cells.append(mark)
+                marks.append(rec.get("status"))
+
+        known = [m for m in marks if m is not None]
+        if known and all(m == store.ALIVE for m in known):
+            verdict = "健康"
+        elif known and all(m == store.DEAD for m in known):
+            verdict = "机场死 IP"
+        elif known and any(m in (store.ALIVE, store.FLAKY) for m in known):
+            verdict = "部分环境被封"
+        else:
+            verdict = "待观察"
+
+        lines.append(f"{ip:<16}" + "".join(f" {c:<{col_width - 1}}" for c in cells) + f"  {verdict}")
+
+    lines.append("")
+    lines.append("符号: OK=alive  X=dead  ~=flaky  ?=unknown  -=该环境没见过")
     return "\n".join(lines)

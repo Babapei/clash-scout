@@ -1,6 +1,6 @@
 # clash-ip-tracker
 
-记录代理节点域名背后的 IP 池健康状态，找出**当前最值得手动指定**的 IP。
+记录代理节点域名背后的 IP 池健康状态，**按网络环境分开记**，找出当前最值得手动指定的 IP。
 
 > 纯只读工具：只发 DNS 查询和 TCP 握手，**不修改任何 Clash 配置、不碰系统文件**。
 
@@ -8,25 +8,27 @@
 
 ## 它解决什么问题
 
-机场常用一个域名配多个 A 记录（如 `n43ds.chhbuv.cn`），DNS 每次返回的 IP 可能不同。这些 IP 的状态差异很大：
+机场常用一个域名配多个 A 记录（如 `n43ds.chhbuv.cn`），DNS 每次返回的 IP 可能不同。这些 IP 的状态差异很大，而且**同一个 IP 在不同网络下结果可能完全相反**：
 
-- 有些一直健康
-- 有些被网络环境（校园网/公司网）针对性封锁
-- 有些是机场自己就没部署服务的死 IP
+```
+209.248.40.46   学校 ❌    家 ✅    热点 ✅   → 学校封的
+209.248.40.42   学校 ❌    家 ❌    热点 ❌   → 机场死 IP
+47.131.82.134   学校 ✅    家 ✅    热点 ✅   → 真健康
+```
 
-结果就是「代理时好时坏」，但**你无法知道当前用的是好 IP 还是坏 IP**，因为 Clash 不保存历史。
+Clash 不保存这些历史，所以你只能感受到「时好时坏」，不知道原因。
 
-这个工具做一件事：**持续把观察到的 IP 和它们的健康状态记下来，形成一张可查的表。**
+这个工具做的事：**按网络环境持续记录 IP 的健康状态，并支持跨环境对比。**
 
 ---
 
 ## 安装
 
-无需第三方依赖，Python 3.9+ 即可。
+无需第三方依赖，Python 3.9+ 即可（依赖系统自带的 `dig`）。
 
 ```bash
 cd clash-ip-tracker
-python3 -m pytest tests/ -v        # 可选：跑测试
+python3 -m unittest discover -s tests -v   # 跑测试
 ```
 
 直接运行（不安装）：
@@ -46,31 +48,66 @@ clash-ip-tracker --domain <域名> --port <端口> check
 
 ## 用法
 
-### 常用：采样 + 探测 + 出报告
+### 核心：自动识别网络环境
+
+不指定 `--env` 时，用**默认网关 IP** 自动区分网络：
 
 ```bash
+# 在家里（网关 192.168.30.1）→ 自动记到 gw:192.168.30.1
+python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 check
+
+# 在学校（网关 172.27.255.254）→ 自动记到 gw:172.27.255.254
 python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 check
 ```
 
-输出示例：
+也可以手动命名：
+
+```bash
+python3 -m clash_ip_tracker --domain <域名> --env home check
+python3 -m clash_ip_tracker --domain <域名> --env campus check
+python3 -m clash_ip_tracker --domain <域名> --env hotspot check
+```
+
+### 采样 + 探测 + 报告
+
+```bash
+python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 --env hotspot check
+```
 
 ```
-  探测 209.248.40.46    OK   156ms
-  探测 209.248.40.47    DEAD  -
-  探测 47.131.82.134    OK   81ms
+环境 hotspot：探测 2 个 IP
+  15.168.19.83     OK    154ms
+  209.248.40.49    OK    205ms
 
-域名: n43ds.chhbuv.cn    端口: 61750
-本轮 DNS 采样发现 4 个 IP，表内共 4 个
-状态统计: 活 3 / 时好时坏 1 / 死 0 / 陈旧 0
+环境: hotspot    域名: n43ds.chhbuv.cn    端口: 61750
+本轮 DNS 采样发现 2 个 IP，本环境共记录 2 个
+状态统计: 活 2 / 时好时坏 0 / 死 0 / 陈旧 0
 
 IP               状态       成功/失败      成功率     延迟       最后检测         最后可用
 -------------------------------------------------------------------------------
-209.248.40.46    alive    1/0        100%    156ms    10-30 21:12  10-30 21:12
-47.131.82.134    alive    1/0        100%    81ms     10-30 21:12  10-30 21:12
-209.248.40.47    flaky    0/1        0%      -        10-30 21:12  -
+15.168.19.83     alive    1/0        100%    154ms    10-30 21:19  10-30 21:19
+209.248.40.49    alive    1/0        100%    205ms    10-30 21:19  10-30 21:19
 
-推荐 IP: 47.131.82.134  (成功率 100%，延迟 80.8ms)
+推荐 IP: 15.168.19.83  (成功率 100%，延迟 153.6ms)
 ```
+
+### 跨环境对比（这个最有价值）
+
+```bash
+python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn compare
+```
+
+```
+域名: n43ds.chhbuv.cn    对比 3 个环境
+
+IP               home       campus     hotspot    结论
+------------------------------------------------------------
+47.131.82.134    OK         OK         OK         健康
+209.248.40.46    OK         X          OK         部分环境被封
+209.248.40.42    X          X          X          机场死 IP
+```
+
+**一眼看出每个 IP 是被网络环境干掉的，还是机场自己就没服务。**
 
 ### 其它子命令
 
@@ -83,6 +120,9 @@ python3 -m clash_ip_tracker --domain <域名> report
 
 # 只输出推荐 IP（给脚本用）
 python3 -m clash_ip_tracker --domain <域名> best
+
+# 列出所有环境
+python3 -m clash_ip_tracker --domain <域名> compare
 ```
 
 ---
@@ -104,30 +144,36 @@ python3 -m clash_ip_tracker --domain <域名> best
 ## 数据位置
 
 ```
-~/.clash-ip-tracker/table.json     # 表
+~/.clash-ip-tracker/table.json      # 表
 ~/.clash-ip-tracker/table.json.lock # 文件锁
 ```
 
-按域名分组，可以同时记录多个机场。
+按「环境 → 域名 → IP」三层组织：
 
 ```json
 {
-  "version": 1,
-  "domains": {
-    "n43ds.chhbuv.cn": {
-      "ports": [61750],
-      "ips": {
-        "47.131.82.134": {
-          "first_seen": "2026-10-30T21:12:00+08:00",
-          "last_seen": "2026-10-30T21:12:00+08:00",
-          "last_check": "2026-10-30T21:12:00+08:00",
-          "last_ok": "2026-10-30T21:12:00+08:00",
-          "status": "alive",
-          "ok": 1,
-          "fail": 0,
-          "consecutive_fail": 0,
-          "latency_ms": 81,
-          "stale": false
+  "version": 2,
+  "environments": {
+    "gw:192.168.30.1": {
+      "label": "gw:192.168.30.1",
+      "last_seen": "2026-10-30T21:19:00+08:00",
+      "domains": {
+        "n43ds.chhbuv.cn": {
+          "ports": [61750],
+          "ips": {
+            "47.131.82.134": {
+              "first_seen": "...",
+              "last_seen": "...",
+              "last_check": "...",
+              "last_ok": "...",
+              "status": "alive",
+              "ok": 1,
+              "fail": 0,
+              "consecutive_fail": 0,
+              "latency_ms": 81,
+              "stale": false
+            }
+          }
         }
       }
     }
@@ -135,11 +181,13 @@ python3 -m clash_ip_tracker --domain <域名> best
 }
 ```
 
+旧版（v1，顶层 `domains`）会自动迁移到 `unknown` 环境。
+
 ---
 
 ## 配置
 
-默认值写在 `clash_ip_tracker/config.py`，可通过 `~/.clash-ip-tracker/config.json` 覆盖：
+默认值在 `clash_ip_tracker/config.py`，可用 `~/.clash-ip-tracker/config.json` 覆盖：
 
 ```json
 {
@@ -153,7 +201,7 @@ python3 -m clash_ip_tracker --domain <域名> best
 }
 ```
 
-也可用环境变量临时覆盖：`CLASH_TRACKER_DNS`、`CLASH_TRACKER_PORTS`、`CLASH_TRACKER_DATA`。
+环境变量：`CLASH_TRACKER_DNS`、`CLASH_TRACKER_PORTS`、`CLASH_TRACKER_DATA`。
 
 ---
 
@@ -163,31 +211,31 @@ python3 -m clash_ip_tracker --domain <域名> best
 
 | 行为 | 频率 | 说明 |
 |---|---|---|
-| DNS 采样 | 每 30 分钟一次 | 每次只查几轮 |
+| DNS 采样 | 每 30 分钟 | 每次只查几轮 |
 | TCP 探测 | 每 5~15 分钟 | 只对「距上次检测超过 N 分钟」的 IP |
 | 探测方式 | TCP 三次握手 | 不发业务数据，握手完立即关闭 |
 
-量级参考：15 个 IP × 每 10 分钟一次 ≈ **每小时 90 次握手**，远低于正常浏览网页产生的连接数。
+量级参考：15 个 IP × 每 10 分钟一次 ≈ **每小时 90 次握手**，远低于正常浏览产生的连接数。
 
-**不建议**：秒级监控、全端口扫描、并发轰炸。这些才会触发防护。
+**不建议**：秒级监控、全端口扫描、并发轰炸。
 
 ---
 
 ## 局限（重要）
 
 1. **看不到完整 IP 池**：只能通过多次 DNS 采样「尽量采样全」，永远可能漏。
-2. **不能自动修复**：Verge 没有公开的重载接口，所以工具只「记录 + 推荐」，切换需要手动。
-3. **探测成功 ≠ 能上网**：TCP 通只代表端口开着；节点可能仍然拒绝服务。
-4. **不解决根本问题**：如果机场整体质量差或被针对性封锁，工具只能帮你选好一点的 IP。
+2. **不能自动修复**：Verge 没有公开的重载接口，工具只「记录 + 推荐」，切换需手动。
+3. **TCP 通 ≠ 能上网**：端口开着不代表节点一定接受服务。
+4. **不解决根本问题**：机场整体质量差的话，工具只能帮你选相对好的。
 
 ---
 
 ## 扩展方向
 
 - [ ] 自动从 Clash/Verge 配置读取当前订阅的域名和端口
-- [ ] 支持 TLS 握手探测（已在 `port_probe.py` 预留）
+- [ ] 支持 TLS 握手探测（`port_probe.py` 已预留）
 - [ ] 导出 CSV
-- [ ] 按小时统计成功率曲线，观察池子是否在恶化
+- [ ] 按小时统计成功率曲线，观察池子是否恶化
 - [ ] 生成 `hosts` / Verge Script 片段（仍需手动应用）
 - [ ] 多机场并行采样
 
@@ -198,13 +246,13 @@ python3 -m clash_ip_tracker --domain <域名> best
 ```
 clash_ip_tracker/
 ├── config.py      # 默认配置 + 覆盖
-├── store.py       # JSON 表、文件锁、状态机
+├── store.py       # JSON 表、文件锁、状态机、v1→v2 迁移
 ├── dns_probe.py   # DNS 采样（调 dig）
 ├── port_probe.py  # TCP / TLS 探测
-├── report.py      # 表格渲染 + 推荐逻辑
+├── report.py      # 表格渲染 + 跨环境对比 + 推荐逻辑
 └── cli.py         # 命令行
 tests/
-└── test_store.py  # 状态机与存储的单测
+└── test_store.py  # 12 个单测：状态机、环境隔离、迁移、stale
 ```
 
 ---
