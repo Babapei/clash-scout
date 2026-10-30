@@ -151,10 +151,12 @@ scout airports
 
 不想每次手动跑？配一个定时任务，每 10 分钟自动记录一次。
 
+这是内建命令，`scout --help` 里能看到。
+
 ```bash
-bash setup-scheduler.sh           # 默认每 10 分钟
-bash setup-scheduler.sh 30        # 改成每 30 分钟
-bash setup-scheduler.sh --remove  # 卸载
+scout install-scheduler            # 默认每 10 分钟
+scout install-scheduler --every 30 # 改成每 30 分钟
+scout uninstall-scheduler          # 卸载
 ```
 
 它做三件事：

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -224,6 +226,102 @@ def cmd_best(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+SCHEDULER_LABEL = "com.local.scout"
+
+
+def _scheduler_paths() -> tuple[Path, Path, Path, Path]:
+    """返回 (plist, wrapper, app_dir, log_dir)。"""
+    home = Path.home()
+    log_dir = home / ".clash-ip-tracker"
+    return (
+        home / "Library" / "LaunchAgents" / f"{SCHEDULER_LABEL}.plist",
+        log_dir / "run-scheduled.sh",
+        log_dir / "app",
+        log_dir,
+    )
+
+
+def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
+    """安装定时记录任务（macOS launchd）。"""
+    if platform.system() != "Darwin":
+        print("这个命令只支持 macOS。Linux 用户请用 cron，见 docs/usage.md。")
+        return 1
+
+    interval = args.every or 10
+    plist, wrapper, app_dir, log_dir = _scheduler_paths()
+    project_dir = Path(__file__).resolve().parent.parent
+
+    # macOS 的 launchd 不能访问 ~/Documents（TCC 保护），
+    # 所以把运行所需文件复制到 ~/.clash-ip-tracker/app/
+    app_dir.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(app_dir / "clash_ip_tracker", ignore_errors=True)
+    shutil.copytree(project_dir / "clash_ip_tracker", app_dir / "clash_ip_tracker")
+    shutil.copy2(project_dir / "scout.py", app_dir / "scout.py")
+
+    wrapper.write_text(
+        "#!/bin/bash\n"
+        "# 由 scout install-scheduler 生成\n"
+        'if ! pgrep -f "Clash Verge" >/dev/null 2>&1; then\n'
+        '  echo "$(date \'+%F %T\') Clash Verge 未运行，跳过"\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "$(date \'+%F %T\') 开始记录"\n'
+        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" --from-clash check 2>&1 | tail -5\n'
+    )
+    wrapper.chmod(0o755)
+
+    plist.parent.mkdir(parents=True, exist_ok=True)
+    plist.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "    <key>Label</key>\n"
+        f"    <string>{SCHEDULER_LABEL}</string>\n"
+        "    <key>ProgramArguments</key>\n"
+        "    <array>\n"
+        "        <string>/bin/bash</string>\n"
+        f"        <string>{wrapper}</string>\n"
+        "    </array>\n"
+        "    <key>StartInterval</key>\n"
+        f"    <integer>{interval * 60}</integer>\n"
+        "    <key>StandardOutPath</key>\n"
+        f"    <string>{log_dir}/scheduler.log</string>\n"
+        "    <key>StandardErrorPath</key>\n"
+        f"    <string>{log_dir}/scheduler.err</string>\n"
+        "    <key>RunAtLoad</key>\n"
+        "    <true/>\n"
+        "</dict>\n"
+        "</plist>\n"
+    )
+
+    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+    result = subprocess.run(["launchctl", "load", str(plist)], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"加载失败：{result.stderr.strip()}")
+        return 1
+
+    print(f"✅ 已安装：每 {interval} 分钟自动记录一次")
+    print(f"   日志：{log_dir}/scheduler.log")
+    print(f"   卸载：scout uninstall-scheduler")
+    return 0
+
+
+def cmd_uninstall_scheduler(args: argparse.Namespace, cfg: dict) -> int:
+    """卸载定时记录任务。"""
+    plist, wrapper, app_dir, _ = _scheduler_paths()
+    subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+    for path in (plist, wrapper):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+    shutil.rmtree(app_dir, ignore_errors=True)
+    print("✅ 已卸载定时任务")
+    return 0
+
+
 def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
     """列出表里记录过的所有机场域名，以及各自的健康概况。"""
     path = _data_path(cfg)
@@ -363,6 +461,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_best = sub.add_parser("best", help="输出推荐 IP（供脚本使用）")
     p_best.set_defaults(func=cmd_best)
+
+    p_install = sub.add_parser("install-scheduler", help="安装定时记录任务（macOS）")
+    p_install.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
+    p_install.set_defaults(func=cmd_install_scheduler)
+
+    p_uninstall = sub.add_parser("uninstall-scheduler", help="卸载定时记录任务")
+    p_uninstall.set_defaults(func=cmd_uninstall_scheduler)
 
     p_airports = sub.add_parser("airports", help="列出表里所有机场域名和健康概况")
     p_airports.set_defaults(func=cmd_airports)
