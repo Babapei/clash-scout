@@ -159,9 +159,9 @@ scout forget --domain old-airport.com
 这是内建命令，`scout --help` 里能看到。
 
 ```bash
-scout install-scheduler            # 默认每 10 分钟
-scout install-scheduler --every 30 # 改成每 30 分钟
-scout uninstall-scheduler          # 卸载
+scout auto              # 开启，默认每 10 分钟
+scout auto --every 30   # 改成每 30 分钟
+scout auto off          # 关闭
 ```
 
 它做三件事：

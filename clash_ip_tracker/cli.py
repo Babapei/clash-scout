@@ -241,6 +241,13 @@ def _scheduler_paths() -> tuple[Path, Path, Path, Path]:
     )
 
 
+def cmd_auto(args: argparse.Namespace, cfg: dict) -> int:
+    """开启或关闭自动记录。"""
+    if args.action == "off":
+        return cmd_uninstall_scheduler(args, cfg)
+    return cmd_install_scheduler(args, cfg)
+
+
 def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
     """安装定时记录任务（macOS launchd）。"""
     if platform.system() != "Darwin":
@@ -304,7 +311,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
 
     print(f"✅ 已安装：每 {interval} 分钟自动记录一次")
     print(f"   日志：{log_dir}/scheduler.log")
-    print(f"   卸载：scout uninstall-scheduler")
+    print("   关闭：scout auto off")
     return 0
 
 
@@ -520,12 +527,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_best = sub.add_parser("best", help="输出推荐 IP（供脚本使用）")
     p_best.set_defaults(func=cmd_best)
 
-    p_install = sub.add_parser("install-scheduler", help="安装定时记录任务（macOS）")
-    p_install.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
-    p_install.set_defaults(func=cmd_install_scheduler)
-
-    p_uninstall = sub.add_parser("uninstall-scheduler", help="卸载定时记录任务")
-    p_uninstall.set_defaults(func=cmd_uninstall_scheduler)
+    p_auto = sub.add_parser("auto", help="开启/关闭自动记录（macOS 定时任务）")
+    p_auto.add_argument("action", nargs="?", choices=["on", "off"], default="on",
+                        help="on 开启（默认），off 关闭")
+    p_auto.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
+    p_auto.set_defaults(func=cmd_auto)
 
     p_forget = sub.add_parser("forget", help="删除表里的环境 / 域名 / IP")
     p_forget.add_argument("--env", help="环境名（如 hotspot 或 gw:192.168.30.1）")
