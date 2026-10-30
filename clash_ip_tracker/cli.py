@@ -176,6 +176,8 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
                 if domain in seen:
                     continue
                 seen.add(domain)
+                if not store.is_airport_auto(node):
+                    continue
                 port = (node.get("ports") or [61750])[0]
                 targets.append((domain, int(port)))
 
@@ -569,6 +571,16 @@ def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
             if node is not None:
                 nodes.append(node)
 
+        if args.auto:
+            if not nodes:
+                print(f"表里没有域名 {domain}，先跑一次 check")
+                return 1
+            enabled = args.auto == "on"
+            for node in nodes:
+                store.set_airport_auto(node, enabled)
+            print(f"✅ 机场 {domain} 自动检测：{'开启' if enabled else '关闭'}")
+            return 0
+
         if args.clear:
             if not nodes:
                 print(f"表里没有域名 {domain}")
@@ -582,7 +594,12 @@ def cmd_airport(args: argparse.Namespace, cfg: dict) -> int:
             if not nodes:
                 print(f"表里没有域名 {domain}，先跑一次 check")
             else:
-                print(f"当前机场: {domain} → 显示为「{nodes[0].get('alias') or domain}」")
+                node = nodes[0]
+                auto_state = "开启" if store.is_airport_auto(node) else "关闭"
+                print(
+                    f"当前机场: {domain} → 显示为「{node.get('alias') or domain}」"
+                    f"    自动检测: {auto_state}"
+                )
             return 0
 
         if not nodes:
@@ -787,6 +804,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_airport.add_argument("name", nargs="?", help="新名字；不填则显示当前")
     p_airport.add_argument("--clear", action="store_true", help="恢复原始显示")
     p_airport.add_argument("--id", help="指定域名")
+    p_airport.add_argument("--auto", choices=["on", "off"], help="是否参与自动检测")
     p_airport.set_defaults(func=cmd_airport)
 
     p_alias = sub.add_parser("alias", help="列出所有别名")

@@ -122,6 +122,7 @@ class ScoutApp(App):
         ("3", "switch_tab('tab-airports')", "机场"),
         ("4", "switch_tab('tab-alias')", "别名"),
         ("e", "edit_alias", "改名"),
+        ("space", "toggle_auto", "勾选自动"),
         ("r", "refresh", "刷新"),
         ("c", "check", "检查一轮"),
         ("q", "quit", "退出"),
@@ -317,28 +318,83 @@ class ScoutApp(App):
     def _render_airports(self, snapshot: dict[str, Any]) -> None:
         table = self.query_one("#table-airports", DataTable)
         table.clear(columns=True)
-        table.add_columns("环境", "机场域名", "活", "抖", "死", "共", "端口")
 
         envs = snapshot.get("environments", {})
-        if not envs:
-            table.add_row("-", "表里还没有数据", "-", "-", "-", "-", "-")
+        env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs.items()]
+
+        # 收集所有唯一的机场域名 → {env_id: node}
+        domains: dict[str, dict[str, dict[str, Any]]] = {}
+        for env_id, env in envs.items():
+            for domain, node in env.get("domains", {}).items():
+                domains.setdefault(domain, {})[env_id] = node
+
+        if not domains:
+            table.add_columns("提示")
+            table.add_row("表里还没有数据")
+            self.airport_rows = []
             return
 
-        for env_id, env in envs.items():
-            label = env.get("label", env_id)
-            domains = env.get("domains", {})
-            if not domains:
-                table.add_row(label, "（无）", "-", "-", "-", "-", "-")
-                continue
-            for domain, node in domains.items():
-                display = store.domain_display(node, domain)
+        table.add_columns(
+            "机场", "端口", *[label for _, label in env_cols], "唯一IP", "自动"
+        )
+        self.airport_rows = []
+
+        for domain in sorted(domains):
+            env_map = domains[domain]
+
+            ports: set[str] = set()
+            all_ips: set[str] = set()
+            cells: list[str] = []
+            for env_id, _ in env_cols:
+                node = env_map.get(env_id)
+                if node is None:
+                    cells.append("-")
+                    continue
                 ips = node.get("ips", {})
+                all_ips.update(ips)
                 alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
                 flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
                 dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
-                ports = ",".join(str(p) for p in node.get("ports", [])) or "-"
-                table.add_row(label, display, str(alive), str(flaky), str(dead), str(len(ips)), ports)
+                cells.append(f"{alive}/{flaky}/{dead}")
+                ports.update(str(p) for p in node.get("ports", []))
 
+            any_node = next(iter(env_map.values()))
+            auto = "✓" if store.is_airport_auto(any_node) else "✗"
+            table.add_row(
+                store.domain_display(any_node, domain),
+                ",".join(sorted(ports)) or "-",
+                *cells,
+                str(len(all_ips)),
+                auto,
+            )
+            self.airport_rows.append(domain)
+
+    def action_toggle_auto(self) -> None:
+        """在机场 Tab 里按空格切换是否参与自动检测。"""
+        table = self.query_one("#table-airports", DataTable)
+        row = table.cursor_row
+        rows = getattr(self, "airport_rows", [])
+        if row < 0 or row >= len(rows):
+            self.notify("先切到机场 Tab 并选中一行", severity="warning")
+            return
+
+        domain = rows[row]
+        path = self._data_path()
+        enabled = False
+        with store.locked(path) as data:
+            nodes = []
+            for env in data["environments"].values():
+                node = env["domains"].get(domain)
+                if node is not None:
+                    nodes.append(node)
+            if not nodes:
+                return
+            enabled = not store.is_airport_auto(nodes[0])
+            for node in nodes:
+                store.set_airport_auto(node, enabled)
+
+        self.refresh_data()
+        self.notify(f"{domain} 自动检测：{'开启' if enabled else '关闭'}")
 
     # ---------------------------------------------------------------- Tab 4
 

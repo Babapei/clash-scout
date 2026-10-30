@@ -268,6 +268,15 @@ def set_domain_alias(node: dict[str, Any], alias: str) -> None:
     node["alias"] = alias
 
 
+
+def is_airport_auto(node: dict[str, Any]) -> bool:
+    """这个机场是否参与自动检测（默认参与）。"""
+    return node.get("auto", True)
+
+
+def set_airport_auto(node: dict[str, Any], enabled: bool) -> None:
+    node["auto"] = enabled
+
 def env_display(env: dict[str, Any], env_id: str) -> str:
     return env.get("label") or env_id
 
