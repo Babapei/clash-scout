@@ -327,9 +327,6 @@ def _scheduler_paths() -> tuple[Path, Path, Path, Path]:
 
 def cmd_auto(args: argparse.Namespace, cfg: dict) -> int:
     """查看 / 开启 / 关闭自动记录。"""
-    if getattr(args, "all", False) and getattr(args, "current", False):
-        print("--all 和 --current 不能同时用")
-        return 1
     if args.action == "status":
         return cmd_auto_status(cfg)
     if args.action == "off":
@@ -375,13 +372,7 @@ def cmd_auto_status(cfg: dict) -> int:
         except OSError:
             pass
 
-    scope = "当前机场"
-    try:
-        if "--all" in wrapper.read_text():
-            scope = "所有勾选的机场"
-    except OSError:
-        pass
-    print(f"  范围：{scope}")
+    print("  范围：所有勾选的机场（在 UI 机场 Tab 或 scout airport --auto 里调整）")
 
     print(f"  日志：{log}")
     print(f"  运行副本：{app_dir}")
@@ -414,7 +405,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
         "  exit 0\n"
         "fi\n"
         'echo "$(date \'+%F %T\') 开始记录"\n'
-        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" --from-clash check{" --all" if getattr(args, "all", False) else ""} 2>&1 | tail -8\n'
+        f'PYTHONPATH="{app_dir}" "{sys.executable}" "{app_dir}/scout.py" check --all 2>&1 | tail -8\n'
     )
     wrapper.chmod(0o755)
 
@@ -450,7 +441,7 @@ def cmd_install_scheduler(args: argparse.Namespace, cfg: dict) -> int:
         print(f"加载失败：{result.stderr.strip()}")
         return 1
 
-    print(f"✅ 已安装：每 {interval} 分钟自动记录一次" + ("（全部机场）" if getattr(args, "all", False) else "（当前机场）"))
+    print(f"✅ 已安装：每 {interval} 分钟自动检测所有勾选的机场")
     print(f"   日志：{log_dir}/scheduler.log")
     print("   关闭：scout auto off")
     return 0
@@ -796,8 +787,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_auto.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status",
                         help="status 查看状态（默认），on 开启，off 关闭")
     p_auto.add_argument("--every", type=int, default=10, help="间隔分钟数，默认 10")
-    p_auto.add_argument("--all", action="store_true", help="自动任务测所有勾选的机场")
-    p_auto.add_argument("--current", action="store_true", help="只测当前订阅（默认）")
+
     p_auto.set_defaults(func=cmd_auto)
 
     p_forget = sub.add_parser("forget", help="删除表里的环境 / 域名 / IP")
