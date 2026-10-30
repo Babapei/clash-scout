@@ -71,8 +71,15 @@ python3 -m clash_ip_tracker --domain <域名> --env hotspot check
 ### 采样 + 探测 + 报告
 
 ```bash
+# 自动从 Verge 读当前订阅的域名和端口（推荐，省得手输）
+python3 -m clash_ip_tracker --from-clash --env hotspot check
+
+# 或者手动指定
 python3 -m clash_ip_tracker --domain n43ds.chhbuv.cn --port 61750 --env hotspot check
 ```
+
+> **注意端口**：同一个订阅里，不同节点可能用不同端口（如 `28537`、`61750`），
+> 端口的可用性可能完全不同。用 `--from-clash` 会自动选出现最多的那个端口。
 
 ```
 环境 hotspot：探测 2 个 IP

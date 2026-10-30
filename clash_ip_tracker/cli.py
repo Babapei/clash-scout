@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import config, dns_probe, port_probe, report, store
+from . import clash_config, config, dns_probe, port_probe, report, store
 
 
 # ---------------------------------------------------------------- 环境识别
@@ -48,9 +48,29 @@ def resolve_env(args: argparse.Namespace) -> tuple[str, str]:
 
 
 def _target(args: argparse.Namespace, cfg: dict) -> tuple[str, int]:
-    domain = args.domain or cfg.get("domain")
+    """解析目标域名和端口。
+
+    优先级：--domain > --from-clash > 配置文件 > 报错
+    """
+    if args.domain:
+        port = args.port or (cfg["probe_ports"][0] if cfg.get("probe_ports") else 61750)
+        return args.domain, int(port)
+
+    if args.from_clash:
+        try:
+            domain, port, name = clash_config.resolve_target()
+        except clash_config.ClashConfigError as exc:
+            print(f"错误：{exc}", file=sys.stderr)
+            raise SystemExit(2)
+        print(f"从 Verge 读到订阅「{name}」→ {domain}:{port}")
+        return domain, int(args.port or port)
+
+    domain = cfg.get("domain")
     if not domain:
-        print("错误：需要指定域名。例如 --domain n43ds.chhbuv.cn", file=sys.stderr)
+        print(
+            "错误：需要指定域名。用 --domain n43ds.chhbuv.cn，或 --from-clash 自动读取",
+            file=sys.stderr,
+        )
         raise SystemExit(2)
     port = args.port or (cfg["probe_ports"][0] if cfg.get("probe_ports") else 61750)
     return domain, int(port)
@@ -196,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--env",
         help="给当前网络起个名字（如 home/campus/hotspot）。不指定则用网关 IP 自动区分",
+    )
+    parser.add_argument(
+        "--from-clash",
+        action="store_true",
+        help="从 Clash Verge 当前订阅里自动读取域名和端口（省得手输）",
     )
 
     sub = parser.add_subparsers(dest="command", required=True)
