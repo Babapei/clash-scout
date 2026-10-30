@@ -222,6 +222,48 @@ scout --domain <域名> compare
 
 ---
 
+## 找到稳定的 IP 之后怎么用
+
+工具只负责「找出哪个 IP 最稳」，**不会自动帮你切换**（Verge 没有可编程的重载接口）。
+
+要把它固定下来用，两种手动方式：
+
+**方式一：Verge 的 DNS Hosts（推荐，不用碰系统）**
+
+```
+设置 → Clash 设置 → DNS 设置 → Hosts 一栏填：
+
+n43ds.chhbuv.cn=47.131.82.134
+```
+
+保存后重启 Verge。这样域名固定解析到这个 IP，不再靠 DNS 抽签。
+
+**方式二：Script 扩展**
+
+写一个 JS 脚本，把节点的 `server` 字段改成 IP：
+
+```js
+function main(config) {
+  const GOOD_IP = '47.131.82.134'
+  config.proxies.forEach(p => {
+    if (p.server === 'n43ds.chhbuv.cn') p.server = GOOD_IP
+  })
+  return config
+}
+```
+
+**重要提醒：IP 会失效**
+
+今天实测的寿命是**几十分钟到几小时**。失效后：
+
+```bash
+scout --from-clash check     # 重新采样，拿到新的推荐 IP
+```
+
+然后把 hosts / Script 里的 IP 换成新的。
+
+**所以这不是「设一次永久有效」**，而是「卡的时候查一下，换一下」。工具的价值在于**让你知道该换成哪个**，而不是替你还原。
+
 ## 状态含义
 
 | 状态 | 含义 |
