@@ -147,6 +147,39 @@ scout airports
 
 ---
 
+## 自动记录（可选，推荐）
+
+不想每次手动跑？配一个定时任务，每 10 分钟自动记录一次。
+
+```bash
+bash setup-scheduler.sh           # 默认每 10 分钟
+bash setup-scheduler.sh 30        # 改成每 30 分钟
+bash setup-scheduler.sh --remove  # 卸载
+```
+
+它做三件事：
+
+1. 检查 Clash Verge 是否在运行（不在就跳过，不报错）
+2. 跑 `scout --from-clash check`
+3. 结果写进表，同时记日志
+
+看日志：
+
+```bash
+tail -f ~/.clash-ip-tracker/scheduler.log
+```
+
+**macOS 注意**：launchd 不能访问 `~/Documents`（系统隐私保护），
+脚本会自动把运行文件复制到 `~/.clash-ip-tracker/app/` 再跑，项目本身不用移动。
+
+**Linux 用户**可以自己配 cron：
+
+```cron
+*/10 * * * * cd /path/to/clash-ip-tracker && python3 -m clash_ip_tracker --from-clash check
+```
+
+---
+
 ## 找到稳定的 IP 之后怎么用
 工具只负责「找出哪个 IP 最稳」，**不会自动帮你切换**（Verge 没有可编程的重载接口）。
 
