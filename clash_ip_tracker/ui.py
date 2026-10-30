@@ -347,11 +347,19 @@ class ScoutApp(App):
         table.clear()
         self.alias_rows: list[tuple[str, str, str]] = []
 
-        for env_id, env in snapshot.get("environments", {}).items():
+        envs = snapshot.get("environments", {})
+
+        for env_id, env in envs.items():
             label = env.get("label") or env_id
             table.add_row("环境", env_id, label)
             self.alias_rows.append(("环境", env_id, label))
+
+        seen_domains: set[str] = set()
+        for env in envs.values():
             for domain, node in env.get("domains", {}).items():
+                if domain in seen_domains:
+                    continue
+                seen_domains.add(domain)
                 alias = node.get("alias") or domain
                 table.add_row("机场", domain, alias)
                 self.alias_rows.append(("机场", domain, alias))

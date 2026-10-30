@@ -273,14 +273,24 @@ def domain_display(node: dict[str, Any], domain: str) -> str:
 
 
 def list_aliases(table: dict[str, Any]) -> list[tuple[str, str, str, str]]:
-    """返回 [(类型, 内部标识, 显示名, 是否已改名)]。"""
+    """返回 [(类型, 内部标识, 显示名, 是否已改名)]。
+
+    环境按 env_id 唯一；机场（域名）跨环境去重，只列一次。
+    """
     rows: list[tuple[str, str, str, str]] = []
+    seen_domains: set[str] = set()
+
     for env_id, env in table["environments"].items():
         label = env.get("label") or env_id
         rows.append(("环境", env_id, label, "是" if label != env_id else "否"))
+
+    for env in table["environments"].values():
         for domain, node in env["domains"].items():
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
             alias = node.get("alias") or domain
-            rows.append((f"机场@{env_id}", domain, alias, "是" if alias != domain else "否"))
+            rows.append(("机场", domain, alias, "是" if alias != domain else "否"))
     return rows
 
 def success_rate(rec: dict[str, Any]) -> float | None:
