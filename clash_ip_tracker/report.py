@@ -1,7 +1,12 @@
-"""输出：单环境表格、跨环境对比、最佳 IP 选择。"""
+"""输出：单环境表格、跨环境对比、最佳 IP 选择。
+
+注意：中文和 emoji 在终端里占两个字符宽度，用 len() 补空格会错位，
+所以统一用 display_width() / pad() 处理。
+"""
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 from . import store
@@ -19,6 +24,35 @@ STATUS_MARK = {
     store.FLAKY: "~",
     store.UNKNOWN: "?",
 }
+
+
+# ---------------------------------------------------------------- 宽度处理
+
+
+def display_width(text: str) -> int:
+    """按终端显示宽度计算：全角/宽字符算 2，其余算 1。"""
+    width = 0
+    for ch in text:
+        if unicodedata.east_asian_width(ch) in ("W", "F"):
+            width += 2
+        elif unicodedata.combining(ch):
+            width += 0
+        else:
+            width += 1
+    return width
+
+
+def pad(text: str, width: int, align: str = "left") -> str:
+    """按显示宽度补齐（不是按 len）。"""
+    padding = width - display_width(text)
+    if padding <= 0:
+        return text
+    if align == "right":
+        return " " * padding + text
+    return text + " " * padding
+
+
+# ---------------------------------------------------------------- 单环境
 
 
 def _fmt_time(value: str | None) -> str:
@@ -58,6 +92,22 @@ def pick_best(node: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
     return sorted(candidates, key=score, reverse=True)[0]
 
 
+COLUMNS = [
+    ("IP", 16, "left"),
+    ("状态", 8, "left"),
+    ("成功/失败", 10, "right"),
+    ("成功率", 8, "right"),
+    ("延迟", 8, "right"),
+    ("最后检测", 13, "left"),
+    ("最后可用", 13, "left"),
+]
+
+
+def _row(cells: list[str], aligns: list[str] | None = None) -> str:
+    aligns = aligns or ["left"] * len(cells)
+    return "  ".join(pad(c, w, a) for c, (_, w, _), a in zip(cells, COLUMNS, aligns))
+
+
 def render(
     env: dict[str, Any],
     node: dict[str, Any],
@@ -87,19 +137,25 @@ def render(
     lines.append(f"状态统计: 活 {alive} / 时好时坏 {flaky} / 死 {dead} / 陈旧 {stale}")
     lines.append("")
 
-    header = (
-        f"{'IP':<16} {'状态':<8} {'成功/失败':<10} {'成功率':<7} "
-        f"{'延迟':<8} {'最后检测':<12} {'最后可用':<12}"
-    )
-    lines.append(header)
-    lines.append("-" * len(header))
+    header_line = _row([c[0] for c in COLUMNS], [c[2] for c in COLUMNS])
+    lines.append(header_line)
+    lines.append("-" * display_width(header_line))
     for ip, rec in ips[:limit]:
         latency = f"{rec['latency_ms']:.0f}ms" if rec.get("latency_ms") else "-"
-        note = " [stale]" if rec.get("stale") else ""
+        status = STATUS_LABEL.get(rec.get("status"), "?") + ("*" if rec.get("stale") else "")
         lines.append(
-            f"{ip:<16} {STATUS_LABEL.get(rec.get('status'), '?'):<8} "
-            f"{rec.get('ok', 0)}/{rec.get('fail', 0):<8} {_fmt_rate(rec):<7} "
-            f"{latency:<8} {_fmt_time(rec.get('last_check')):<12} {_fmt_time(rec.get('last_ok')):<12}{note}"
+            _row(
+                [
+                    ip,
+                    status,
+                    f"{rec.get('ok', 0)}/{rec.get('fail', 0)}",
+                    _fmt_rate(rec),
+                    latency,
+                    _fmt_time(rec.get("last_check")),
+                    _fmt_time(rec.get("last_ok")),
+                ],
+                ["left", "left", "right", "right", "right", "left", "left"],
+            )
         )
 
     if len(ips) > limit:
@@ -114,6 +170,9 @@ def render(
         lines.append("推荐 IP: 无（当前环境没有可用 IP）")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------- 跨环境对比
 
 
 def render_compare(table: dict[str, Any], domain: str) -> str:
@@ -133,16 +192,19 @@ def render_compare(table: dict[str, Any], domain: str) -> str:
     if not ip_to_envs:
         return f"没有任何环境记录过域名 {domain}。"
 
-    # 列宽：IP + 每个环境（按最长 label 动态算）
+    # 列宽：按最长 label 的显示宽度算
     env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs]
-    col_width = max(len(label) for _, label in env_cols) + 2
+    label_widths = [max(display_width(label), 8) for _, label in env_cols]
+
     lines: list[str] = []
     lines.append(f"域名: {domain}    对比 {len(env_cols)} 个环境")
     lines.append("")
 
-    header = f"{'IP':<16}" + "".join(f" {label:<{col_width - 1}}" for _, label in env_cols) + "  结论"
+    header = pad("IP", 16) + "  " + "  ".join(
+        pad(label, w) for (_, label), w in zip(env_cols, label_widths)
+    ) + "  结论"
     lines.append(header)
-    lines.append("-" * (len(header) + 6))
+    lines.append("-" * (display_width(header) + 2))
 
     for ip in sorted(ip_to_envs):
         row = ip_to_envs[ip]
@@ -154,9 +216,8 @@ def render_compare(table: dict[str, Any], domain: str) -> str:
                 cells.append("-")
                 marks.append(None)
             else:
-                mark = STATUS_MARK.get(rec.get("status"), "?")
-                cells.append(mark)
                 marks.append(rec.get("status"))
+                cells.append(STATUS_MARK.get(rec.get("status"), "?"))
 
         known = [m for m in marks if m is not None]
         if known and all(m == store.ALIVE for m in known):
@@ -168,7 +229,11 @@ def render_compare(table: dict[str, Any], domain: str) -> str:
         else:
             verdict = "待观察"
 
-        lines.append(f"{ip:<16}" + "".join(f" {c:<{col_width - 1}}" for c in cells) + f"  {verdict}")
+        lines.append(
+            pad(ip, 16) + "  " + "  ".join(
+                pad(c, w) for c, w in zip(cells, label_widths)
+            ) + f"  {verdict}"
+        )
 
     lines.append("")
     lines.append("符号: OK=alive  X=dead  ~=flaky  ?=unknown  -=该环境没见过")
