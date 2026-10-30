@@ -24,24 +24,32 @@ Clash 不保存这些历史，所以你只能感受到「时好时坏」，不�
 
 ## 安装
 
-无需第三方依赖，Python 3.9+ 即可（依赖系统自带的 `dig`）。
+需要 Python 3.9+、系统自带的 `dig`，以及 PyYAML（macOS 系统 Python 通常已带）。
+
+**方式一：pip 安装（推荐，之后直接敲 `scout`）**
 
 ```bash
 cd clash-ip-tracker
-python3 -m unittest discover -s tests -v   # 跑测试
+python3 -m pip install --user -e . --no-build-isolation
 ```
 
-直接运行（不安装）：
+> `--no-build-isolation` 是为了避免联网下载 setuptools（国内常连不上 PyPI）。
+> 装完如果 `scout` 找不到，把它软链到已在 PATH 的目录：
+>
+> ```bash
+> ln -sf ~/Library/Python/3.9/bin/scout ~/.local/bin/scout
+> ```
+
+**方式二：不安装，直接跑**
 
 ```bash
-scout --domain <节点域名> --port <端口> check
+python3 scout.py --domain <域名> --port <端口> check
 ```
 
-或安装成命令：
+跑测试：
 
 ```bash
-pip3 install -e .
-clash-ip-tracker --domain <域名> --port <端口> check
+python3 -m unittest discover -s tests -v
 ```
 
 ---
