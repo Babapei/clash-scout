@@ -126,6 +126,7 @@ class ScoutApp(App):
         Binding("3", "switch_tab('tab-airports')", "机场"),
         Binding("4", "switch_tab('tab-alias')", "别名"),
         Binding("5", "switch_tab('tab-settings')", "设置"),
+        Binding("6", "switch_tab('tab-audit')", "体检"),
         Binding("r", "refresh", "刷新"),
         Binding("c", "check", "检查"),
         Binding("q", "quit", "退出"),
@@ -162,12 +163,12 @@ class ScoutApp(App):
             with TabPane("别名", id="tab-alias"):
                 yield Static("选中一行按 e 改名；新名字留空表示恢复原始值。", id="alias-hint")
                 yield DataTable(id="table-alias", zebra_stripes=True)
+            with TabPane("设置", id="tab-settings"):
+                yield Static("正在读取…", id="settings")
             with TabPane("体检", id="tab-audit"):
                 yield Button("开始体检（约 2 分钟，会短暂断网）", id="btn-audit", variant="primary")
                 yield Static("点上面的按钮开始", id="audit-progress")
                 yield DataTable(id="table-audit", zebra_stripes=True)
-            with TabPane("设置", id="tab-settings"):
-                yield Static("正在读取…", id="settings")
         yield Footer()
 
     def on_mount(self) -> None:
