@@ -92,6 +92,27 @@ def test_dns(domain: str | None) -> dict[str, Any]:
     }
 
 
+def active_node_ips(port: int) -> list[str]:
+    """从 netstat 拿 Clash 当前实际连接的节点 IP。"""
+    ok, out = _run(["netstat", "-an", "-p", "tcp"])
+    if not ok:
+        return []
+    marker = f".{port}"
+    ips: set[str] = set()
+    for line in out.splitlines():
+        if marker not in line or "ESTABLISHED" not in line:
+            continue
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        remote = parts[4]
+        if remote.endswith(marker):
+            ip = remote[: -len(marker)]
+            if ip and not ip.startswith("127."):
+                ips.add(ip)
+    return sorted(ips)
+
+
 def test_nodes(ips: list[str], port: int, timeout: float = 3.0) -> list[dict[str, Any]]:
     """对每个 IP 做 TCP 握手。"""
     results = []
@@ -201,14 +222,26 @@ def diagnose(domain: str | None, port: int, ips: list[str], proxy_url: str = "ht
     """跑完整诊断。"""
     gateway = detect_gateway()
     dns_result = test_dns(domain)
-    # 优先用刚解析出来的 IP，表里的可能已经过期
-    node_ips = dns_result.get("ips") or ips
+
+    # 节点 IP 的选取顺序：
+    #   ① Clash 实际连着的（最准）
+    #   ② DNS 刚解析出来的
+    #   ③ 表里记录的
+    node_ips = active_node_ips(port)
+    node_ip_source = "实际连接"
+    if not node_ips:
+        node_ips = dns_result.get("ips") or []
+        node_ip_source = "DNS 解析"
+    if not node_ips:
+        node_ips = ips
+        node_ip_source = "表记录"
 
     result: dict[str, Any] = {
         "gateway": test_gateway(gateway),
         "domestic": test_domestic(),
         "dns": dns_result,
         "nodes": test_nodes(node_ips, port),
+        "node_ip_source": node_ip_source,
         "proxy": test_proxy(proxy_url),
         "system": test_system(),
     }
@@ -263,7 +296,7 @@ def format_report(result: dict[str, Any]) -> str:
         lines.append(f"  {dns.get('error') or '解析失败'}")
     lines.append("")
 
-    lines.append("节点")
+    lines.append(f"节点（来源：{result.get('node_ip_source') or '-'}）")
     for node in nodes:
         if node["ok"]:
             lines.append(f"  {node['ip']:<18} TCP {node['latency_ms']:.0f}ms")
