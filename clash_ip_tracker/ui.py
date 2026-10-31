@@ -207,11 +207,6 @@ class ScoutApp(App):
                 yield DataTable(id="table-alias", zebra_stripes=True)
             with TabPane("设置", id="tab-settings"):
                 yield Static("正在读取…", id="settings")
-            with TabPane("诊断", id="tab-diag"):
-                with Horizontal(id="diag-header"):
-                    yield Static("尚未诊断", id="diag-info")
-                    yield Button("开始诊断", id="btn-diag", variant="warning")
-                yield Static("", id="diag-body")
             with TabPane("体检", id="tab-audit"):
                 with Vertical(id="audit-recommend"):
                     yield Static("", id="audit-recommend-text")
@@ -220,6 +215,11 @@ class ScoutApp(App):
                     yield Button("开始体检", id="btn-audit", variant="primary")
                 yield Static("", id="audit-progress")
                 yield DataTable(id="table-audit", zebra_stripes=True)
+            with TabPane("诊断", id="tab-diag"):
+                with Horizontal(id="diag-header"):
+                    yield Static("尚未诊断", id="diag-info")
+                    yield Button("开始诊断", id="btn-diag", variant="warning")
+                yield Static("", id="diag-body")
         yield Footer()
 
     def on_mount(self) -> None:
