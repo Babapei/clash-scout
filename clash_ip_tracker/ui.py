@@ -178,7 +178,7 @@ class ScoutApp(App):
         self.query_one("#table-compare", DataTable)
         self.query_one("#table-airports", DataTable)
         self.query_one("#table-alias", DataTable).add_columns("类型", "内部标识", "显示名")
-        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "地区", "组织", "机房")
+        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "地区", "组织", "机房", "上次体检")
         self.refresh_data()
         self.set_interval(30, self.refresh_data)
 
@@ -220,6 +220,11 @@ class ScoutApp(App):
                 fn(snapshot)
             except Exception as exc:  # noqa: BLE001
                 self.notify(f"{name} Tab 刷新失败：{exc}", severity="error")
+
+        try:
+            self._render_audit(snapshot)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"体检 Tab 刷新失败：{exc}", severity="error")
 
         try:
             self._render_settings()
@@ -501,7 +506,12 @@ class ScoutApp(App):
         progress = self.query_one("#audit-progress", Static)
 
         def on_progress(index: int, total: int, node: str, result: dict | None) -> None:
-            self.call_from_thread(progress.update, f"进度 {index}/{total}  {node}")
+            pct = int(index / total * 100)
+            filled = pct // 5
+            bar = "█" * filled + "░" * (20 - filled)
+            self.call_from_thread(
+                progress.update, f"{bar} {index}/{total} ({pct}%)  {node}"
+            )
 
         self.call_from_thread(progress.update, "开始体检…")
         try:
@@ -511,25 +521,39 @@ class ScoutApp(App):
             return
         self.call_from_thread(self._show_audit_results, results)
 
-    def _show_audit_results(self, results: list[dict]) -> None:
+    def _render_audit(self, snapshot: dict[str, Any]) -> None:
+        """把已保存的体检结果画出来。"""
         table = self.query_one("#table-audit", DataTable)
         table.clear()
-        ok_count = 0
-        for r in results:
-            if r.get("ok"):
-                ok_count += 1
-                location = f"{r.get('city') or '-'}, {r.get('country') or '-'}"
-                table.add_row(
-                    str(r.get("node")),
-                    str(r.get("ip") or "-"),
-                    location,
-                    str(r.get("org") or "-"),
-                    "是" if r.get("is_idc") else "否",
-                )
-            else:
-                table.add_row(str(r.get("node")), r.get("error") or "查询失败", "-", "-", "-")
+        nodes = store.get_audit_nodes(snapshot)
+        if not nodes:
+            return
+
+        for name in sorted(nodes):
+            info = nodes[name]
+            location = f"{info.get('city') or '-'}, {info.get('country') or '-'}"
+            table.add_row(
+                name,
+                str(info.get("ip") or "-"),
+                location,
+                str(info.get("org") or "-"),
+                "是" if info.get("is_idc") else "否",
+                relative_age(info.get("audited_at")) or "刚刚",
+            )
+
+    def _show_audit_results(self, results: list[dict]) -> None:
+        ok_count = sum(1 for r in results if r.get("ok"))
+
+        # 写进表，下次打开还能看到
+        try:
+            with store.locked(self._data_path()) as data:
+                store.save_audit(data, results)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"保存体检结果失败：{exc}", severity="error")
+
+        self.refresh_data()
         self.query_one("#audit-progress", Static).update(
-            f"完成：{len(results)} 个节点，{ok_count} 个查到出口"
+            f"完成：{len(results)} 个节点，{ok_count} 个查到出口（已保存）"
         )
 
     # ---------------------------------------------------------------- Tab 5

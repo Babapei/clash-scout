@@ -265,6 +265,33 @@ def needs_check(rec: dict[str, Any], recheck_minutes: int) -> bool:
 
 
 
+
+# ---------------------------------------------------------------- 节点体检
+
+
+def save_audit(table: dict[str, Any], results: list[dict[str, Any]]) -> None:
+    """把体检结果合并进表里的 nodes 字段。"""
+    nodes = table.setdefault("nodes", {})
+    stamp = now_iso()
+    for item in results:
+        if not item.get("ok"):
+            continue
+        name = str(item.get("node") or "")
+        if not name:
+            continue
+        nodes[name] = {
+            "ip": item.get("ip"),
+            "city": item.get("city"),
+            "country": item.get("country"),
+            "org": item.get("org"),
+            "is_idc": bool(item.get("is_idc")),
+            "audited_at": stamp,
+        }
+
+
+def get_audit_nodes(table: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return table.get("nodes") or {}
+
 # ---------------------------------------------------------------- 别名
 
 

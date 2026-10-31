@@ -745,6 +745,12 @@ def cmd_audit(args: argparse.Namespace, cfg: dict) -> int:
 
     print()
     print(audit_module.format_results(results))
+
+    # 存进表，下次打开还能看到
+    if results:
+        with store.locked(_data_path(cfg)) as table:
+            store.save_audit(table, results)
+        print(f"\n已保存到 {_data_path(cfg)}")
     return 0
 
 
