@@ -731,17 +731,44 @@ def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
                 name = sub.get("name") or unknown
                 groups.setdefault(name, {}).setdefault(env_id, {})[domain] = node
 
+        # 补充 Verge 里存在、但还没采集过的域名（显示为「未采集」）
+        try:
+            for sub_info in clash_config.list_all_subscriptions():
+                sub_name = sub_info["name"] or "未命名订阅"
+                bucket = groups.setdefault(sub_name, {})
+                for server, port in sub_info["domains"]:
+                    # 找该订阅已采集的环境，没有就放个占位
+                    existing = None
+                    for env_id in list(bucket):
+                        if server in bucket[env_id]:
+                            existing = env_id
+                            break
+                    if existing is None:
+                        bucket.setdefault("__pending__", {})[server] = {
+                            "_pending": True,
+                            "ports": [port] if port else [],
+                        }
+        except clash_config.ClashConfigError:
+            pass
+
         total = 0
         for sub_name in sorted(groups):
             print(f"机场 {sub_name}")
             env_map = groups[sub_name]
             for env_id in sorted(env_map):
-                env = table["environments"][env_id]
-                label = env.get("label", env_id)
-                print(f"  环境 {label}")
+                if env_id == "__pending__":
+                    print("  未采集")
+                else:
+                    env = table["environments"][env_id]
+                    label = env.get("label", env_id)
+                    print(f"  环境 {label}")
                 for domain in sorted(env_map[env_id]):
                     node = env_map[env_id][domain]
                     total += 1
+                    if node.get("_pending"):
+                        ports = ",".join(str(x) for x in node.get("ports", [])) or "-"
+                        print(f"    {domain:<26} 未采集                    端口 {ports}")
+                        continue
                     ips = node.get("ips", {})
                     alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
                     flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
