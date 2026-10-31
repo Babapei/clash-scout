@@ -16,7 +16,7 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual import work
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
@@ -111,12 +111,15 @@ class ScoutApp(App):
 
     CSS = """
     Screen { layout: vertical; }
-    #status, #compare-title {
+    #status, #compare-title, #audit-header {
         height: auto;
         padding: 1 2;
         background: $panel;
         border: round $primary;
     }
+    #audit-info { width: 1fr; }
+    #btn-audit { width: auto; min-width: 12; }
+    #audit-progress { height: 1; margin: 0 2 1 2; }
     DataTable { height: 1fr; }
     """
 
@@ -166,8 +169,10 @@ class ScoutApp(App):
             with TabPane("设置", id="tab-settings"):
                 yield Static("正在读取…", id="settings")
             with TabPane("体检", id="tab-audit"):
-                yield Button("开始体检（约 2 分钟，会短暂断网）", id="btn-audit", variant="primary")
-                yield Static("点上面的按钮开始", id="audit-progress")
+                with Horizontal(id="audit-header"):
+                    yield Static("尚未体检", id="audit-info")
+                    yield Button("开始体检", id="btn-audit", variant="primary")
+                yield Static("", id="audit-progress")
                 yield DataTable(id="table-audit", zebra_stripes=True)
         yield Footer()
 
@@ -524,10 +529,21 @@ class ScoutApp(App):
     def _render_audit(self, snapshot: dict[str, Any]) -> None:
         """把已保存的体检结果画出来。"""
         table = self.query_one("#table-audit", DataTable)
+        info = self.query_one("#audit-info", Static)
         table.clear()
         nodes = store.get_audit_nodes(snapshot)
         if not nodes:
+            info.update("尚未体检过")
             return
+
+        latest = max(
+            (n.get("audited_at") for n in nodes.values() if n.get("audited_at")),
+            default=None,
+        )
+        info.update(
+            f"[b]上次体检[/b] {relative_age(latest) or '刚刚'}    "
+            f"[b]已记录[/b] {len(nodes)} 个节点"
+        )
 
         for name in sorted(nodes):
             info = nodes[name]
