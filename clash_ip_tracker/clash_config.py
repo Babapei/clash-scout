@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,29 @@ def extract_target(profile_path: Path, selected_names: set[str] | None = None) -
         raise ClashConfigError("订阅里没有可用的 server/port")
     (server, port), count = counter.most_common(1)[0]
     return server, port, f"出现最多的组合（{count} 个节点）"
+
+
+def subscription_age_days(verge_dir: Path | None = None) -> tuple[str, float] | None:
+    """返回 (订阅名, 距今多少天没更新)。拿不到返回 None。"""
+    root = verge_dir or find_verge_dir()
+    if root is None:
+        return None
+
+    data = _load_yaml(root / "profiles.yaml") or {}
+    current = data.get("current")
+    for item in data.get("items") or []:
+        if not isinstance(item, dict) or item.get("uid") != current:
+            continue
+        updated = item.get("updated")
+        if not updated:
+            return None
+        try:
+            ts = float(updated)
+        except (TypeError, ValueError):
+            return None
+        age = (time.time() - ts) / 86400
+        return item.get("name") or str(current), age
+    return None
 
 
 def current_subscription(verge_dir: Path | None = None) -> dict[str, str]:

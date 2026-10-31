@@ -129,6 +129,15 @@ def _sample(args: argparse.Namespace, cfg: dict, domain: str) -> dict[str, int] 
 def cmd_sample(args: argparse.Namespace, cfg: dict) -> int:
     """只采样 DNS，把新 IP 记进当前环境的表。"""
     domain, port = _target(args, cfg)
+
+    try:
+        age_info = clash_config.subscription_age_days()
+    except clash_config.ClashConfigError:
+        age_info = None
+    if age_info and age_info[1] >= 7:
+        name, days = age_info
+        print(f"⚠️ 订阅「{name}」已 {days:.0f} 天未更新；如果大量失败，先到 Verge 里更新订阅")
+
     counts = _sample(args, cfg, domain)
     if counts is None:
         return 1
@@ -203,6 +212,14 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
 
     total = len(targets)
     print(f"共 {total} 个机场，当前环境：{label}")
+
+    try:
+        age_info = clash_config.subscription_age_days()
+    except clash_config.ClashConfigError:
+        age_info = None
+    if age_info and age_info[1] >= 7:
+        name, days = age_info
+        print(f"⚠️ 订阅「{name}」已 {days:.0f} 天未更新；如果大量失败，先到 Verge 里更新订阅")
 
     for idx, (domain, port) in enumerate(targets, 1):
         print(f"\n【{idx}/{total}】{domain}:{port}")
