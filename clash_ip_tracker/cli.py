@@ -723,6 +723,31 @@ def cmd_alias(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_audit(args: argparse.Namespace, cfg: dict) -> int:
+    """节点体检：逐个切换节点查出口 IP / 机房属性。"""
+    from . import audit as audit_module
+
+    def progress(index: int, total: int, node: str, result: dict | None) -> None:
+        status = "OK" if result else "失败"
+        print(f"  [{index}/{total}] {node}  {status}", flush=True)
+
+    print(f"开始体检（代理组：{args.group}，会短暂断网，结束自动恢复）")
+    try:
+        results = audit_module.audit(
+            group=args.group,
+            limit=args.limit,
+            delay=args.delay,
+            on_progress=progress,
+        )
+    except RuntimeError as exc:
+        print(f"错误：{exc}")
+        return 1
+
+    print()
+    print(audit_module.format_results(results))
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace, cfg: dict) -> int:
     """打开终端界面（需要 textual）。"""
     try:
@@ -945,6 +970,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_alias = sub.add_parser("alias", help="列出所有别名")
     p_alias.set_defaults(func=cmd_alias)
+
+    p_audit = sub.add_parser("audit", help="节点体检：逐个切换查出口 IP / 是否机房")
+    p_audit.add_argument("--limit", type=int, help="只测前 N 个节点")
+    p_audit.add_argument("--group", default="🌐 代理", help="代理组名，默认「🌐 代理」")
+    p_audit.add_argument("--delay", type=float, default=1.0, help="每个节点等待秒数")
+    p_audit.set_defaults(func=cmd_audit)
 
     p_ui = sub.add_parser("ui", help="打开终端界面（需要 textual）")
     p_ui.set_defaults(func=cmd_ui)
