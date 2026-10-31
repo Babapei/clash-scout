@@ -468,6 +468,30 @@ class ScoutApp(App):
                 lines.append(f"[b]订阅[/b] {name}  今天更新")
             else:
                 lines.append(f"[b]订阅[/b] {name}  {days:.0f} 天前更新")
+
+            # 同订阅下的所有历史域名
+            try:
+                current_sub = clash_config.current_subscription()
+                uid = current_sub.get("uid")
+            except clash_config.ClashConfigError:
+                uid = None
+
+            if uid and self.domain:
+                seen: set[str] = set()
+                old_domains: list[str] = []
+                with store.locked(self._data_path()) as data:
+                    for env_node in data["environments"].values():
+                        for d, node in env_node["domains"].items():
+                            if d in seen:
+                                continue
+                            if (node.get("subscription") or {}).get("uid") == uid:
+                                seen.add(d)
+                                if d != self.domain:
+                                    old_domains.append(d)
+
+                lines.append(f"    当前域名：{self.domain}")
+                for d in sorted(old_domains):
+                    lines.append(f"    [dim]历史域名：{d}（已失效）[/dim]")
             lines.append("")
 
         lines += [
