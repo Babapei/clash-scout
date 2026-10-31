@@ -118,12 +118,16 @@ class ScoutApp(App):
         border: round $primary;
     }
     #audit-recommend {
+        height: auto;
         padding: 0 2;
         margin-bottom: 1;
         background: $success-darken-2;
         border: round $success;
     }
-    #audit-recommend-text { width: 1fr; }
+    #audit-recommend-text {
+        width: 1fr;
+        height: auto;
+    }
     #audit-header { padding: 0 2; }
     #audit-info { width: 1fr; }
     #btn-audit {
