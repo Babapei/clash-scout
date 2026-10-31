@@ -115,6 +115,13 @@ def audit(
 
     original = info.get("now")
 
+    # 从当前订阅读节点协议，纯本地读取，不影响连接
+    try:
+        from .clash_config import get_node_protocols
+        protocols = get_node_protocols()
+    except Exception:  # noqa: BLE001
+        protocols = {}
+
     # 过滤掉非节点项：DIRECT/REJECT、信息节点、自动选择/故障转移这类组内引用
     SKIP_KEYWORDS = (
         "剩余流量", "距离下次", "套餐到期", "官网", "到期", "过期",
@@ -139,7 +146,10 @@ def audit(
                 continue
 
             time.sleep(delay)  # 等连接生效
+            started = time.time()
             info_out = exit_info(proxy_url)
+            latency = (time.time() - started) * 1000 if info_out else None
+
             entry = {
                 "node": node,
                 "ok": info_out is not None,
@@ -148,6 +158,8 @@ def audit(
                 "country": (info_out or {}).get("country"),
                 "org": (info_out or {}).get("org"),
                 "is_idc": is_idc((info_out or {}).get("org")),
+                "latency_ms": latency,
+                "protocol": protocols.get(node),
             }
             results.append(entry)
             if on_progress:
@@ -165,8 +177,9 @@ def format_results(results: list[dict[str, Any]]) -> str:
     from .report import pad
 
     header = (
-        pad("节点", 24) + "  " + pad("出口 IP", 16) + "  "
-        + pad("地区", 8) + "  " + pad("组织", 36) + "  " + pad("机房", 6)
+        pad("节点", 22) + "  " + pad("出口 IP", 16) + "  " + pad("协议", 10) + "  "
+        + pad("地区", 12) + "  " + pad("组织", 32) + "  "
+        + pad("机房", 4) + "  " + pad("延迟", 7)
     )
     lines = [header, "-" * 100]
 
@@ -175,11 +188,14 @@ def format_results(results: list[dict[str, Any]]) -> str:
             lines.append(pad(str(r.get("node"))[:22], 24) + "  " + str(r.get("error") or "查询失败"))
             continue
         location = f"{r.get('city') or '-'}, {r.get('country') or '-'}"
+        latency = r.get("latency_ms")
         lines.append(
-            pad(str(r.get("node"))[:22], 24) + "  "
+            pad(str(r.get("node"))[:20], 22) + "  "
             + pad(str(r.get("ip") or "-"), 16) + "  "
-            + pad(location[:10], 8) + "  "
-            + pad(str(r.get("org") or "-")[:34], 36) + "  "
-            + pad("是" if r.get("is_idc") else "否", 6)
+            + pad(str(r.get("protocol") or "-")[:8], 10) + "  "
+            + pad(location[:10], 12) + "  "
+            + pad(str(r.get("org") or "-")[:30], 32) + "  "
+            + pad("是" if r.get("is_idc") else "否", 4) + "  "
+            + pad(f"{latency:.0f}ms" if latency else "-", 7)
         )
     return "\n".join(lines)

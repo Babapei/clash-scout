@@ -187,6 +187,35 @@ def list_all_subscriptions(verge_dir: Path | None = None) -> list[dict[str, Any]
     return result
 
 
+def get_node_protocols(verge_dir: Path | None = None) -> dict[str, str]:
+    """返回当前订阅的 {节点名: 协议类型}。"""
+    root = verge_dir or find_verge_dir()
+    if root is None:
+        return {}
+
+    data = _load_yaml(root / "profiles.yaml") or {}
+    current = data.get("current")
+    for item in data.get("items") or []:
+        if not isinstance(item, dict) or item.get("uid") != current:
+            continue
+        file_name = item.get("file")
+        if not file_name:
+            return {}
+        profile_path = root / "profiles" / file_name
+        if not profile_path.exists():
+            return {}
+        try:
+            profile_data = _load_yaml(profile_path) or {}
+        except Exception:  # noqa: BLE001
+            return {}
+        result: dict[str, str] = {}
+        for proxy in profile_data.get("proxies") or []:
+            if isinstance(proxy, dict) and proxy.get("name"):
+                result[str(proxy["name"])] = str(proxy.get("type") or "?")
+        return result
+    return {}
+
+
 def resolve_target(verge_dir: Path | None = None) -> tuple[str, int, str]:
     """返回 (domain, port, 来源说明)。读不到时抛 ClashConfigError。"""
     vd = verge_dir or find_verge_dir()

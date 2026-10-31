@@ -285,6 +285,8 @@ def save_audit(table: dict[str, Any], results: list[dict[str, Any]]) -> None:
             "country": item.get("country"),
             "org": item.get("org"),
             "is_idc": bool(item.get("is_idc")),
+            "protocol": item.get("protocol"),
+            "latency_ms": item.get("latency_ms"),
             "audited_at": stamp,
         }
 
