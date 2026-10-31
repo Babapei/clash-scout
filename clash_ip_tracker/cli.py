@@ -251,12 +251,21 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
 
         with store.locked(path) as table:
             env = store.get_environment(table, env_id, label)
+            # 找这个域名属于哪个订阅：先看表里已有记录，再去 Verge 订阅里匹配
             sub = None
             for existing_env in table["environments"].values():
                 existing = existing_env["domains"].get(domain)
                 if existing and existing.get("subscription"):
                     sub = existing["subscription"]
                     break
+            if sub is None:
+                try:
+                    for sub_info in clash_config.list_all_subscriptions():
+                        if any(d == domain for d, _ in sub_info["domains"]):
+                            sub = {"uid": sub_info["uid"], "name": sub_info["name"]}
+                            break
+                except clash_config.ClashConfigError:
+                    pass
             node = store.get_domain(env, domain, port, subscription=sub)
             for ip in counts:
                 store.upsert_seen(node, ip)
