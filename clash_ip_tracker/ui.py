@@ -572,12 +572,18 @@ class ScoutApp(App):
         rec_widget = self.query_one("#audit-recommend-text", Static)
         recs = pick_recommended(nodes)
         if recs:
+            from .report import pad
+
             lines = ["[b]推荐[/b]  住宅 · 有出口 · 地区不重复"]
             for rec_name, rec_info in recs:
                 latency = rec_info.get("latency_ms")
                 lat = f"{latency:.0f}ms" if latency else "-"
+                country = str(rec_info.get("country") or "-")
                 lines.append(
-                    f"  {rec_name}    {rec_info.get('org') or '-'}    {lat}"
+                    pad(f"  {rec_name}", 16) + "  "
+                    + pad(country, 4) + "  "
+                    + pad(str(rec_info.get("org") or "-"), 34) + "  "
+                    + pad(lat, 8)
                 )
             rec_widget.update("\n".join(lines))
         else:
