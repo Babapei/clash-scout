@@ -322,12 +322,19 @@ def list_aliases(table: dict[str, Any]) -> list[tuple[str, str, str, str]]:
         label = env.get("label") or env_id
         rows.append(("环境", env_id, label, "是" if label != env_id else "否"))
 
+    # 同一个域名可能在多个环境下存在，优先取带别名的那个
+    domain_alias: dict[str, str] = {}
+    for env in table["environments"].values():
+        for domain, node in env["domains"].items():
+            if node.get("alias"):
+                domain_alias.setdefault(domain, node["alias"])
+
     for env in table["environments"].values():
         for domain, node in env["domains"].items():
             if domain in seen_domains:
                 continue
             seen_domains.add(domain)
-            alias = node.get("alias") or domain
+            alias = domain_alias.get(domain) or node.get("alias") or domain
             rows.append(("机场", domain, alias, "是" if alias != domain else "否"))
     return rows
 

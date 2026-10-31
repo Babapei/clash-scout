@@ -380,7 +380,7 @@ n43ds.chhbuv.cn  →  anquan43ds.chhbuv.cn
 
 ### scout 怎么处理
 
-**① 检测并提示**
+**① 检测并提示 + 自动继承别名**
 
 每次 `check` 会对比：
 
@@ -388,6 +388,8 @@ n43ds.chhbuv.cn  →  anquan43ds.chhbuv.cn
 ⚠️ 检测到域名变更（同一订阅）：n43ds.chhbuv.cn → anquan43ds.chhbuv.cn
    旧域名的数据保留，但可能已失效。
 ```
+
+新域名会自动继承旧域名的显示名，不用手动再设。
 
 **② 按订阅分组查看**
 

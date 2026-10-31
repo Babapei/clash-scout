@@ -290,6 +290,24 @@ def cmd_check(args: argparse.Namespace, cfg: dict) -> int:
 
         env = store.get_environment(table, env_id, label)
         node = store.get_domain(env, domain, port, subscription=sub)
+
+        # 新域名自动继承旧域名的显示名，并同步到所有环境下的同名域名
+        if old_domains and not node.get("alias"):
+            inherited = None
+            for old_env in table["environments"].values():
+                for old_domain in old_domains:
+                    old_node = old_env["domains"].get(old_domain)
+                    if old_node and old_node.get("alias"):
+                        inherited = old_node["alias"]
+                        break
+                if inherited:
+                    break
+            if inherited:
+                for env_node in table["environments"].values():
+                    target = env_node["domains"].get(domain)
+                    if target is not None:
+                        target["alias"] = inherited
+                print(f"   已继承显示名：「{inherited}」")
         for ip in counts:
             store.upsert_seen(node, ip)
 
