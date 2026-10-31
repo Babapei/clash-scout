@@ -159,6 +159,22 @@ def _find_domain_by_name(target: str, table: dict) -> str | None:
     return None
 
 
+def _detect_domain_change(
+    table: dict, domain: str, sub: dict[str, str] | None
+) -> list[str]:
+    """找同一个订阅下、除当前域名外的其他旧域名。"""
+    if not sub or not sub.get("uid"):
+        return []
+    found: set[str] = set()
+    for env in table["environments"].values():
+        for old_domain, node in env["domains"].items():
+            if old_domain == domain:
+                continue
+            if (node.get("subscription") or {}).get("uid") == sub["uid"]:
+                found.add(old_domain)
+    return sorted(found)
+
+
 def _check_all(args: argparse.Namespace, cfg: dict) -> int:
     """测表里记录过的所有机场（不影响当前正在用的订阅）。"""
     env_id, label = resolve_env(args)
@@ -203,7 +219,13 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
 
         with store.locked(path) as table:
             env = store.get_environment(table, env_id, label)
-            node = store.get_domain(env, domain, port)
+            sub = None
+            for existing_env in table["environments"].values():
+                existing = existing_env["domains"].get(domain)
+                if existing and existing.get("subscription"):
+                    sub = existing["subscription"]
+                    break
+            node = store.get_domain(env, domain, port, subscription=sub)
             for ip in counts:
                 store.upsert_seen(node, ip)
 
@@ -247,10 +269,27 @@ def cmd_check(args: argparse.Namespace, cfg: dict) -> int:
     recheck = args.recheck if args.recheck is not None else cfg["recheck_minutes"]
     timeout = cfg["probe_timeout"]
     env_id, label = resolve_env(args)
+    try:
+        sub = clash_config.current_subscription()
+    except clash_config.ClashConfigError:
+        sub = None
 
     with store.locked(_data_path(cfg)) as table:
+        # 旧数据可能没有 subscription 字段：用当前订阅回填，
+        # 这样才认得出来「同一个订阅下换过域名」。
+        if sub:
+            for env_node in table["environments"].values():
+                for old_domain, old_node in env_node["domains"].items():
+                    if not old_node.get("subscription"):
+                        old_node["subscription"] = sub
+
+        old_domains = _detect_domain_change(table, domain, sub)
+        if old_domains:
+            print(f"⚠️ 检测到域名变更（同一订阅）：{'、'.join(old_domains)} → {domain}")
+            print("   旧域名的数据保留，但可能已失效。")
+
         env = store.get_environment(table, env_id, label)
-        node = store.get_domain(env, domain, port)
+        node = store.get_domain(env, domain, port, subscription=sub)
         for ip in counts:
             store.upsert_seen(node, ip)
 
@@ -637,7 +676,7 @@ def cmd_ui(args: argparse.Namespace, cfg: dict) -> int:
 
 
 def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
-    """列出表里记录过的所有机场域名，以及各自的健康概况。"""
+    """列出表里记录过的所有机场，按订阅分组。"""
     path = _data_path(cfg)
     if not path.exists():
         print(f"表还不存在：{path}\n先跑一次 check。")
@@ -648,27 +687,35 @@ def cmd_airports(args: argparse.Namespace, cfg: dict) -> int:
             print("表里还没有任何数据。")
             return 0
 
-        total = 0
+        # 按订阅名分组：{订阅名: {环境id: {域名: node}}}
+        groups: dict[str, dict[str, dict[str, dict]]] = {}
+        unknown = "未分组（旧数据）"
         for env_id, env in table["environments"].items():
-            label = env.get("label", env_id)
-            print(f"环境 {label}")
-            domains = env["domains"]
-            if not domains:
-                print("  （无数据）")
-                print()
-                continue
-            for domain, node in domains.items():
-                total += 1
-                ips = node["ips"]
-                alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
-                flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
-                dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
-                ports = ",".join(str(x) for x in node.get("ports", [])) or "-"
-                display = node.get("alias") or domain
-                print(
-                    f"  {display:<26} 活 {alive:<3} 抖 {flaky:<3} 死 {dead:<3} "
-                    f"共 {len(ips):<3} 端口 {ports}"
-                )
+            for domain, node in env["domains"].items():
+                sub = node.get("subscription") or {}
+                name = sub.get("name") or unknown
+                groups.setdefault(name, {}).setdefault(env_id, {})[domain] = node
+
+        total = 0
+        for sub_name in sorted(groups):
+            print(f"机场 {sub_name}")
+            env_map = groups[sub_name]
+            for env_id in sorted(env_map):
+                env = table["environments"][env_id]
+                label = env.get("label", env_id)
+                print(f"  环境 {label}")
+                for domain in sorted(env_map[env_id]):
+                    node = env_map[env_id][domain]
+                    total += 1
+                    ips = node.get("ips", {})
+                    alive = sum(1 for r in ips.values() if r.get("status") == store.ALIVE and not r.get("stale"))
+                    flaky = sum(1 for r in ips.values() if r.get("status") == store.FLAKY and not r.get("stale"))
+                    dead = sum(1 for r in ips.values() if r.get("status") == store.DEAD and not r.get("stale"))
+                    ports = ",".join(str(x) for x in node.get("ports", [])) or "-"
+                    print(
+                        f"    {domain:<26} 活 {alive:<3} 抖 {flaky:<3} 死 {dead:<3} "
+                        f"共 {len(ips):<3} 端口 {ports}"
+                    )
             print()
 
         if total == 0:

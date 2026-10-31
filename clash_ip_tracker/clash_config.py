@@ -98,6 +98,20 @@ def extract_target(profile_path: Path, selected_names: set[str] | None = None) -
     return server, port, f"出现最多的组合（{count} 个节点）"
 
 
+def current_subscription(verge_dir: Path | None = None) -> dict[str, str]:
+    """返回当前订阅的 {"uid", "name"}。"""
+    root = verge_dir or find_verge_dir()
+    if root is None:
+        raise ClashConfigError("找不到 Clash Verge 配置目录")
+
+    data = _load_yaml(root / "profiles.yaml") or {}
+    current = str(data.get("current") or "")
+    for item in data.get("items") or []:
+        if isinstance(item, dict) and item.get("uid") == current:
+            return {"uid": current, "name": item.get("name") or current}
+    return {"uid": current, "name": ""}
+
+
 def list_all_subscriptions(verge_dir: Path | None = None) -> list[dict[str, Any]]:
     """列出 Verge 里所有 remote 订阅，以及各自节点的 server:port。
 

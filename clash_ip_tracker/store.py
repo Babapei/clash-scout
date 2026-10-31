@@ -164,14 +164,24 @@ def get_environment(table: dict[str, Any], env_id: str, label: str | None = None
     return env
 
 
-def get_domain(env: dict[str, Any], domain: str, port: int) -> dict[str, Any]:
-    """取（或创建）某个环境下的域名节点。"""
+def get_domain(
+    env: dict[str, Any],
+    domain: str,
+    port: int,
+    subscription: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """取（或创建）某个环境下的域名节点。
+
+    subscription 是 {"uid": ..., "name": ...}，用来区分「同一机场换域名」和「新机场」。
+    """
     node = env["domains"].setdefault(
         domain,
         {"ports": [], "first_seen": now_iso(), "updated_at": now_iso(), "ips": {}},
     )
     if port not in node["ports"]:
         node["ports"].append(port)
+    if subscription:
+        node["subscription"] = subscription
     node["updated_at"] = now_iso()
     return node
 
