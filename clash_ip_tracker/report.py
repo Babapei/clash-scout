@@ -85,6 +85,13 @@ def relative_age(iso_str: str | None, *, show_all: bool = False) -> str:
     return f"{(now - dt).days}d前"
 
 
+def node_type(info: dict[str, Any]) -> str:
+    """把 is_idc 转成人话：机房 / 住宅 / 未知。"""
+    if not info.get("org"):
+        return "未知"
+    return "机房" if info.get("is_idc") else "住宅"
+
+
 def short_age(iso_str: str | None) -> str:
     """超短时间表示：刚刚 / 5m / 12h / 3d。"""
     dt = store.parse_iso(iso_str)

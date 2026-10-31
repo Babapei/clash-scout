@@ -179,7 +179,7 @@ def format_results(results: list[dict[str, Any]]) -> str:
     header = (
         pad("节点", 22) + "  " + pad("出口 IP", 16) + "  " + pad("协议", 10) + "  "
         + pad("地区", 12) + "  " + pad("组织", 32) + "  "
-        + pad("机房", 4) + "  " + pad("延迟", 7)
+        + pad("类型", 6) + "  " + pad("延迟", 7)
     )
     lines = [header, "-" * 100]
 
@@ -195,7 +195,7 @@ def format_results(results: list[dict[str, Any]]) -> str:
             + pad(str(r.get("protocol") or "-")[:8], 10) + "  "
             + pad(location[:10], 12) + "  "
             + pad(str(r.get("org") or "-")[:30], 32) + "  "
-            + pad("是" if r.get("is_idc") else "否", 4) + "  "
+            + pad("机房" if r.get("is_idc") else "住宅", 6) + "  "
             + pad(f"{latency:.0f}ms" if latency else "-", 7)
         )
     return "\n".join(lines)

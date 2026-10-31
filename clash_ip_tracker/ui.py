@@ -23,7 +23,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Static, Ta
 
 from . import clash_config, config, store
 from .port_probe import tcp_probe
-from .report import STATUS_LABEL, STATUS_MARK, relative_age, short_age
+from .report import STATUS_LABEL, STATUS_MARK, node_type, relative_age, short_age
 
 
 def detect_gateway() -> str | None:
@@ -190,7 +190,7 @@ class ScoutApp(App):
         self.query_one("#table-compare", DataTable)
         self.query_one("#table-airports", DataTable)
         self.query_one("#table-alias", DataTable).add_columns("类型", "内部标识", "显示名")
-        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "协议", "地区", "组织", "机房", "延迟", "体检")
+        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "协议", "地区", "组织", "类型", "延迟", "体检")
         self.refresh_data()
         self.set_interval(30, self.refresh_data)
 
@@ -562,7 +562,7 @@ class ScoutApp(App):
                 str(info.get("protocol") or "-"),
                 location,
                 str(info.get("org") or "-"),
-                "是" if info.get("is_idc") else "否",
+                node_type(info),
                 f"{latency:.0f}ms" if latency else "-",
                 short_age(info.get("audited_at")),
             )
