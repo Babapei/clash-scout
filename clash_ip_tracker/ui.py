@@ -117,6 +117,13 @@ class ScoutApp(App):
         background: $panel;
         border: round $primary;
     }
+    #audit-recommend {
+        padding: 0 2;
+        margin-bottom: 1;
+        background: $success-darken-2;
+        border: round $success;
+    }
+    #audit-recommend-text { width: 1fr; }
     #audit-header { padding: 0 2; }
     #audit-info { width: 1fr; }
     #btn-audit {
@@ -176,6 +183,8 @@ class ScoutApp(App):
             with TabPane("设置", id="tab-settings"):
                 yield Static("正在读取…", id="settings")
             with TabPane("体检", id="tab-audit"):
+                with Vertical(id="audit-recommend"):
+                    yield Static("", id="audit-recommend-text")
                 with Horizontal(id="audit-header"):
                     yield Static("尚未体检", id="audit-info")
                     yield Button("开始体检", id="btn-audit", variant="primary")
@@ -541,6 +550,7 @@ class ScoutApp(App):
         nodes = store.get_audit_nodes(snapshot)
         if not nodes:
             info.update("尚未体检过")
+            self.query_one("#audit-recommend-text", Static).update("尚未体检，暂无推荐")
             return
 
         latest = max(
@@ -551,6 +561,23 @@ class ScoutApp(App):
             f"[b]上次体检[/b] {relative_age(latest) or '刚刚'}    "
             f"[b]已记录[/b] {len(nodes)} 个节点"
         )
+
+        # 推荐框
+        from .audit import pick_recommended
+
+        rec_widget = self.query_one("#audit-recommend-text", Static)
+        recs = pick_recommended(nodes)
+        if recs:
+            lines = ["[b]推荐[/b]  住宅 · 有出口 · 地区不重复"]
+            for rec_name, rec_info in recs:
+                latency = rec_info.get("latency_ms")
+                lat = f"{latency:.0f}ms" if latency else "-"
+                lines.append(
+                    f"  {rec_name}    {rec_info.get('org') or '-'}    {lat}"
+                )
+            rec_widget.update("\n".join(lines))
+        else:
+            rec_widget.update("暂无可推荐节点（可能都是机房或还没体检）")
 
         for name in sorted(nodes):
             info = nodes[name]

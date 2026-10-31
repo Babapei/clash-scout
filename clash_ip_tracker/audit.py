@@ -172,6 +172,59 @@ def audit(
     return results
 
 
+def pick_recommended(
+    nodes: dict[str, dict[str, Any]],
+    limit: int = 3,
+    max_age_days: float = 7.0,
+) -> list[tuple[str, dict[str, Any]]]:
+    """从体检结果里挑推荐节点。
+
+    条件：有出口 IP、住宅（非机房）、体检不超过 7 天。
+    排序：延迟低的优先；同一国家/同一出口 IP 只取一个。
+    """
+    now = time.time()
+    candidates: list[tuple[str, dict[str, Any]]] = []
+
+    for name, info in nodes.items():
+        if not info.get("ip"):
+            continue
+        if info.get("is_idc"):
+            continue
+
+        audited = info.get("audited_at")
+        if audited:
+            # audited_at 是 ISO 字符串，粗算一下年龄
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(audited)
+                age_days = (now - dt.timestamp()) / 86400
+                if age_days > max_age_days:
+                    continue
+            except (ValueError, TypeError):
+                pass
+
+        candidates.append((name, info))
+
+    candidates.sort(key=lambda x: x[1].get("latency_ms") or float("inf"))
+
+    seen_countries: set[str] = set()
+    seen_ips: set[str] = set()
+    result: list[tuple[str, dict[str, Any]]] = []
+
+    for name, info in candidates:
+        country = str(info.get("country") or "-")
+        ip = str(info.get("ip"))
+        if country in seen_countries or ip in seen_ips:
+            continue
+        seen_countries.add(country)
+        seen_ips.add(ip)
+        result.append((name, info))
+        if len(result) >= limit:
+            break
+
+    return result
+
+
 def format_results(results: list[dict[str, Any]]) -> str:
     """把体检结果格式化成对齐的文本表格。"""
     from .report import pad
