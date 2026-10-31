@@ -453,6 +453,24 @@ class ScoutApp(App):
             f"  状态：{state}",
             f"  间隔：每 {interval} 分钟",
             "",
+        ]
+
+        # 订阅状态
+        try:
+            age_info = clash_config.subscription_age_days()
+        except clash_config.ClashConfigError:
+            age_info = None
+        if age_info:
+            name, days = age_info
+            if days >= 7:
+                lines.append(f"[b]订阅[/b] {name}  [red]已 {days:.0f} 天未更新，建议去 Verge 更新[/red]")
+            elif days < 1:
+                lines.append(f"[b]订阅[/b] {name}  今天更新")
+            else:
+                lines.append(f"[b]订阅[/b] {name}  {days:.0f} 天前更新")
+            lines.append("")
+
+        lines += [
             "[b]快捷键[/b]",
             "  [b]a[/b]      开启 / 关闭自动任务",
             "  [b]+ / -[/b]  间隔 +5 / -5 分钟",
