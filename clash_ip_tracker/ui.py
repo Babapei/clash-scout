@@ -242,19 +242,30 @@ class ScoutApp(App):
         )
 
         conn_desc = "、".join(sorted(conns)) if conns else "无活动连接"
-        status.update(
-            "\n".join(
-                [
-                    f"[b]环境[/b] {self.env_label}    [b]机场[/b] {store.domain_display(node or {}, self.domain)}:{self.port}",
-                    f"[b]当前连接[/b] {conn_desc}",
-                    f"[b]推荐 IP[/b] {best or '[red]无可用[/red]'}    "
-                    f"[b]统计[/b] 活 {alive} / 抖 {flaky} / 死 {dead} / 共 {len(ips)}",
-                    "[green]✓ 当前连的正是推荐 IP[/green]"
-                    if best and best in conns
-                    else (f"[yellow]⚠ 当前没连推荐 IP，可以考虑切到 {best}[/yellow]" if best else ""),
-                ]
+
+        env_node = snapshot.get("environments", {}).get(self.env_id) or {}
+        env_display = env_node.get("label") or self.env_label
+
+        lines = [
+            f"[b]环境[/b] {env_display}    [b]机场[/b] {store.domain_display(node or {}, self.domain)}:{self.port}",
+            f"[b]当前连接[/b] {conn_desc}",
+            f"[b]推荐 IP[/b] {best or '[red]无可用[/red]'}    "
+            f"[b]统计[/b] 活 {alive} / 抖 {flaky} / 死 {dead} / 共 {len(ips)}",
+        ]
+
+        if best and best in conns:
+            lines.append("[green]✓ 当前连的正是推荐 IP[/green]")
+        elif best:
+            lines.append(f"[yellow]⚠ 当前没连推荐 IP，可以考虑切到 {best}[/yellow]")
+
+        # 全是死 IP：很可能是订阅没更新（机场换了域名/入口）
+        if ips and alive == 0 and flaky == 0 and dead > 0:
+            lines.append(
+                "[red]⚠️ 所有 IP 都不通，可能订阅需要更新[/red]"
+                "[dim]（Verge → 订阅 → 更新）[/dim]"
             )
-        )
+
+        status.update("\n".join(lines))
 
         for ip, rec in ips[:50]:
             mark = "●" if ip in conns else " "
