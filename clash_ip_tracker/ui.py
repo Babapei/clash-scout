@@ -117,8 +117,9 @@ class ScoutApp(App):
         background: $panel;
         border: round $primary;
     }
+    #audit-header { padding: 0 2; }
     #audit-info { width: 1fr; }
-    #btn-audit { width: auto; min-width: 12; }
+    #btn-audit { width: auto; min-width: 10; }
     #audit-progress { height: 1; margin: 0 2 1 2; }
     DataTable { height: 1fr; }
     """
