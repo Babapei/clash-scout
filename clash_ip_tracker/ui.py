@@ -374,7 +374,8 @@ class ScoutApp(App):
             return
 
         table.add_columns(
-            "机场", "域名", "端口", *[label for _, label in env_cols], "唯一IP", "自动"
+            "机场", "域名", "端口", *[label for _, label in env_cols],
+            "唯一IP", "最后检测", "最后可用", "自动"
         )
         self.airport_rows = []
 
@@ -405,8 +406,30 @@ class ScoutApp(App):
                 cells.append(f"{alive}/{flaky}/{dead}")
 
             unique = str(len(all_ips)) if env_map else "未采集"
+
+            # 最后检测 / 最后可用：要从 IP 记录里取（域名节点本身没这两个字段）
+            check_times: list[str] = []
+            ok_times: list[str] = []
+            for node in env_map.values():
+                for rec in node.get("ips", {}).values():
+                    if rec.get("last_check"):
+                        check_times.append(rec["last_check"])
+                    if rec.get("last_ok"):
+                        ok_times.append(rec["last_ok"])
+            latest_check = max(check_times) if check_times else None
+            latest_ok = max(ok_times) if ok_times else None
+
             auto = "✓" if store.is_airport_auto(snapshot, domain) else "✗"
-            table.add_row(sub_name, domain, port_text, *cells, unique, auto)
+            table.add_row(
+                sub_name,
+                domain,
+                port_text,
+                *cells,
+                unique,
+                relative_age(latest_check) or "刚刚" if latest_check else "-",
+                relative_age(latest_ok) or "刚刚" if latest_ok else "-",
+                auto,
+            )
             self.airport_rows.append(domain)
 
     def action_toggle_auto(self) -> None:
