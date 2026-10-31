@@ -85,6 +85,22 @@ def relative_age(iso_str: str | None, *, show_all: bool = False) -> str:
     return f"{(now - dt).days}d前"
 
 
+def short_age(iso_str: str | None) -> str:
+    """超短时间表示：刚刚 / 5m / 12h / 3d。"""
+    dt = store.parse_iso(iso_str)
+    if dt is None:
+        return "-"
+    now = datetime.now(timezone.utc).astimezone()
+    seconds = (now - dt).total_seconds()
+    if seconds < 60:
+        return "刚刚"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h"
+    return f"{int(seconds // 86400)}d"
+
+
 def _fmt_rate(rec: dict[str, Any]) -> str:
     rate = store.success_rate(rec)
     if rate is None:

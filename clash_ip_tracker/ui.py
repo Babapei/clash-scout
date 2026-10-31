@@ -23,7 +23,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Input, Static, Ta
 
 from . import clash_config, config, store
 from .port_probe import tcp_probe
-from .report import STATUS_LABEL, STATUS_MARK, relative_age
+from .report import STATUS_LABEL, STATUS_MARK, relative_age, short_age
 
 
 def detect_gateway() -> str | None:
@@ -178,7 +178,7 @@ class ScoutApp(App):
         self.query_one("#table-compare", DataTable)
         self.query_one("#table-airports", DataTable)
         self.query_one("#table-alias", DataTable).add_columns("类型", "内部标识", "显示名")
-        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "地区", "组织", "机房", "上次体检")
+        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "地区", "组织", "机房", "体检")
         self.refresh_data()
         self.set_interval(30, self.refresh_data)
 
@@ -538,7 +538,7 @@ class ScoutApp(App):
                 location,
                 str(info.get("org") or "-"),
                 "是" if info.get("is_idc") else "否",
-                relative_age(info.get("audited_at")) or "刚刚",
+                short_age(info.get("audited_at")),
             )
 
     def _show_audit_results(self, results: list[dict]) -> None:
