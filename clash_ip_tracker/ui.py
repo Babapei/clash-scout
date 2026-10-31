@@ -258,8 +258,14 @@ class ScoutApp(App):
         env_node = snapshot.get("environments", {}).get(self.env_id) or {}
         env_display = env_node.get("label") or self.env_label
 
+        # 「机场」用订阅名，域名放括号里，概念统一
+        try:
+            sub_name = clash_config.current_subscription().get("name") or "未知机场"
+        except clash_config.ClashConfigError:
+            sub_name = "未知机场"
+
         lines = [
-            f"[b]环境[/b] {env_display}    [b]机场[/b] {store.domain_display(node or {}, self.domain)}:{self.port}",
+            f"[b]环境[/b] {env_display}    [b]机场[/b] {sub_name}（{self.domain}:{self.port}）",
             f"[b]当前连接[/b] {conn_desc}",
             f"[b]推荐 IP[/b] {best or '[red]无可用[/red]'}    "
             f"[b]统计[/b] 活 {alive} / 抖 {flaky} / 死 {dead} / 共 {len(ips)}",
