@@ -558,22 +558,24 @@ class ScoutApp(App):
         self.notify("已刷新")
 
     def action_check(self) -> None:
-        """跑一次全量探测（同步，可能卡几秒）。"""
-        if not self._resolve_target() or not self.domain or not self.port:
-            self.refresh_data()
-            return
+        """检查所有勾选的机场（和自动任务一致）。"""
+        from . import cli as cli_module
 
-        self.notify("正在检查，请稍候…")
-        path = self._data_path()
-        timeout = self.cfg["probe_timeout"]
-        with store.locked(path) as data:
-            env = store.get_environment(data, self.env_id, self.env_label)
-            node = store.get_domain(env, self.domain, self.port)
-            for ip, rec in list(node["ips"].items()):
-                if rec.get("stale"):
-                    continue
-                ok, latency = tcp_probe(ip, self.port, timeout)
-                store.apply_probe(rec, ok=ok, latency_ms=latency)
+        self.notify("正在检查所有勾选的机场…")
+        args = argparse.Namespace(
+            all=False,
+            airport=None,
+            only_enabled=True,
+            samples=2,
+            recheck=None,
+            env=None,
+            domain=None,
+            port=None,
+        )
+        try:
+            cli_module._check_all(args, self.cfg)
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"检查出错：{exc}", severity="error")
         self.refresh_data()
         self.notify("检查完成")
 
