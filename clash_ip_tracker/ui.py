@@ -154,6 +154,7 @@ class ScoutApp(App):
                 yield Static("正在读取…", id="status")
                 yield DataTable(id="table-current", zebra_stripes=True)
             with TabPane("环境对比", id="tab-compare"):
+                yield Static("", id="compare-title")
                 yield DataTable(id="table-compare", zebra_stripes=True)
             with TabPane("机场", id="tab-airports"):
                 yield DataTable(id="table-airports", zebra_stripes=True)
@@ -294,6 +295,19 @@ class ScoutApp(App):
             return
 
         env_cols = [(env_id, env.get("label", env_id)) for env_id, env in envs]
+        title = self.query_one("#compare-title", Static)
+        display_node = None
+        for _, env_node in envs:
+            node = env_node.get("domains", {}).get(self.domain)
+            if node is not None:
+                display_node = node
+                break
+        display = store.domain_display(display_node or {}, self.domain)
+        title.update(
+            f"[b]当前机场[/b] {display}（{self.domain}）    "
+            f"[b]对比环境[/b] {' · '.join(label for _, label in env_cols)}"
+        )
+
         table.add_columns("IP", *[label for _, label in env_cols], "结论")
 
         ip_to_envs: dict[str, dict[str, dict[str, Any]]] = {}
