@@ -581,15 +581,33 @@ class ScoutApp(App):
             table.add_row("环境", env_id, label)
             self.alias_rows.append(("环境", env_id, label))
 
+        # 机场：先收表里记录过的，再从 Verge 订阅补上没采集过的
         seen_domains: set[str] = set()
+        domain_alias: dict[str, str] = {}
         for env in envs.values():
             for domain, node in env.get("domains", {}).items():
+                if node.get("alias"):
+                    domain_alias.setdefault(domain, node["alias"])
+
+        for env in envs.values():
+            for domain in env.get("domains", {}):
                 if domain in seen_domains:
                     continue
                 seen_domains.add(domain)
-                alias = node.get("alias") or domain
+                alias = domain_alias.get(domain) or domain
                 table.add_row("机场", domain, alias)
                 self.alias_rows.append(("机场", domain, alias))
+
+        try:
+            for sub in clash_config.list_all_subscriptions():
+                for server, _ in sub["domains"]:
+                    if server in seen_domains:
+                        continue
+                    seen_domains.add(server)
+                    table.add_row("机场", server, server)
+                    self.alias_rows.append(("机场", server, server))
+        except Exception:  # noqa: BLE001
+            pass
 
         if not self.alias_rows:
             table.add_row("-", "表里还没有数据", "-")
