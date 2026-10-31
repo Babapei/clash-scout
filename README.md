@@ -46,4 +46,4 @@ scout ui          # 打开终端界面（需先装 textual）
 
 ## License
 
-本地自用工具，未指定许可证。
+[MIT](LICENSE)
