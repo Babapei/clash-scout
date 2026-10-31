@@ -119,7 +119,13 @@ class ScoutApp(App):
     }
     #audit-header { padding: 0 2; }
     #audit-info { width: 1fr; }
-    #btn-audit { width: auto; min-width: 10; }
+    #btn-audit {
+        height: 1;
+        width: auto;
+        min-width: 8;
+        padding: 0 1;
+        border: none;
+    }
     #audit-progress { height: 1; margin: 0 2 1 2; }
     DataTable { height: 1fr; }
     """
