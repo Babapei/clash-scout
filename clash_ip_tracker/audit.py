@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 DEFAULT_SOCK = "/var/run/clash-verge-service/users/501/verge-mihomo.sock"
 DEFAULT_GROUP = "🌐 代理"
-IPINFO_URL = "https://ipinfo.io/json"
+IPINFO_URL = "http://ip-api.com/json"
 
 # 机房/云厂商关键词（用来判断是不是 IDC，不是住宅 IP）
 IDC_KEYWORDS = (
@@ -40,9 +40,17 @@ def _api(path: str) -> dict[str, Any] | None:
     except (subprocess.TimeoutExpired, OSError):
         return None
     try:
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return None
+    if data.get("status") == "success":
+        return {
+            "ip": data.get("query"),
+            "city": data.get("city"),
+            "country": data.get("countryCode"),
+            "org": data.get("as") or data.get("org") or data.get("isp"),
+        }
+    return None
 
 
 def get_group(group: str = DEFAULT_GROUP) -> dict[str, Any] | None:

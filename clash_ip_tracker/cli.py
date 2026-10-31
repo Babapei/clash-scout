@@ -754,6 +754,36 @@ def cmd_audit(args: argparse.Namespace, cfg: dict) -> int:
     return 0
 
 
+def cmd_diag(args: argparse.Namespace, cfg: dict) -> int:
+    """网络诊断：判断问题出在 WiFi、节点还是代理。"""
+    from . import diag as diag_module
+
+    domain = None
+    port = 61750
+    try:
+        domain, resolved_port, _ = clash_config.resolve_target()
+        port = args.port or resolved_port
+    except clash_config.ClashConfigError:
+        domain = args.domain
+        port = args.port or 61750
+
+    # 从表里拿几个 IP 来做 TCP 测试
+    ips: list[str] = []
+    path = _data_path(cfg)
+    if domain and path.exists():
+        with store.locked(path) as table:
+            for env in table["environments"].values():
+                node = env["domains"].get(domain)
+                if node:
+                    ips = list(node["ips"].keys())[:5]
+                    break
+
+    print(f"诊断中…（{domain or '无域名'} : {port}）\n")
+    result = diag_module.diagnose(domain, port, ips)
+    print(diag_module.format_report(result))
+    return 0 if result.get("level") == "ok" else 1
+
+
 def cmd_ui(args: argparse.Namespace, cfg: dict) -> int:
     """打开终端界面（需要 textual）。"""
     try:
@@ -982,6 +1012,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.add_argument("--group", default="🌐 代理", help="代理组名，默认「🌐 代理」")
     p_audit.add_argument("--delay", type=float, default=1.0, help="每个节点等待秒数")
     p_audit.set_defaults(func=cmd_audit)
+
+    p_diag = sub.add_parser("diag", help="网络诊断：判断问题在 WiFi、节点还是代理")
+    p_diag.add_argument("--port", type=int, help="目标端口")
+    p_diag.set_defaults(func=cmd_diag)
 
     p_ui = sub.add_parser("ui", help="打开终端界面（需要 textual）")
     p_ui.set_defaults(func=cmd_ui)
