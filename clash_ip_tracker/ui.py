@@ -17,6 +17,7 @@ from typing import Any
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual import work
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
 
@@ -161,6 +162,10 @@ class ScoutApp(App):
             with TabPane("别名", id="tab-alias"):
                 yield Static("选中一行按 e 改名；新名字留空表示恢复原始值。", id="alias-hint")
                 yield DataTable(id="table-alias", zebra_stripes=True)
+            with TabPane("体检", id="tab-audit"):
+                yield Button("开始体检（约 2 分钟，会短暂断网）", id="btn-audit", variant="primary")
+                yield Static("点上面的按钮开始", id="audit-progress")
+                yield DataTable(id="table-audit", zebra_stripes=True)
             with TabPane("设置", id="tab-settings"):
                 yield Static("正在读取…", id="settings")
         yield Footer()
@@ -172,6 +177,7 @@ class ScoutApp(App):
         self.query_one("#table-compare", DataTable)
         self.query_one("#table-airports", DataTable)
         self.query_one("#table-alias", DataTable).add_columns("类型", "内部标识", "显示名")
+        self.query_one("#table-audit", DataTable).add_columns("节点", "出口 IP", "地区", "组织", "机房")
         self.refresh_data()
         self.set_interval(30, self.refresh_data)
 
@@ -478,6 +484,52 @@ class ScoutApp(App):
         self.refresh_data()
         self.notify(f"{domain} 自动检测：{'开启' if enabled else '关闭'}")
 
+
+
+    # ---------------------------------------------------------------- Tab 6 体检
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-audit":
+            self.start_audit()
+
+    @work(thread=True)
+    def start_audit(self) -> None:
+        """在后台线程跑体检，避免卡住 UI。"""
+        from . import audit as audit_module
+
+        progress = self.query_one("#audit-progress", Static)
+
+        def on_progress(index: int, total: int, node: str, result: dict | None) -> None:
+            self.call_from_thread(progress.update, f"进度 {index}/{total}  {node}")
+
+        self.call_from_thread(progress.update, "开始体检…")
+        try:
+            results = audit_module.audit(on_progress=on_progress)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(progress.update, f"[red]体检失败：{exc}[/red]")
+            return
+        self.call_from_thread(self._show_audit_results, results)
+
+    def _show_audit_results(self, results: list[dict]) -> None:
+        table = self.query_one("#table-audit", DataTable)
+        table.clear()
+        ok_count = 0
+        for r in results:
+            if r.get("ok"):
+                ok_count += 1
+                location = f"{r.get('city') or '-'}, {r.get('country') or '-'}"
+                table.add_row(
+                    str(r.get("node")),
+                    str(r.get("ip") or "-"),
+                    location,
+                    str(r.get("org") or "-"),
+                    "是" if r.get("is_idc") else "否",
+                )
+            else:
+                table.add_row(str(r.get("node")), r.get("error") or "查询失败", "-", "-", "-")
+        self.query_one("#audit-progress", Static).update(
+            f"完成：{len(results)} 个节点，{ok_count} 个查到出口"
+        )
 
     # ---------------------------------------------------------------- Tab 5
 
