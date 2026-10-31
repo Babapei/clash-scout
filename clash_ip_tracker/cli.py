@@ -196,6 +196,8 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
     with store.locked(path) as table:
         targets: list[tuple[str, int]] = []
         seen: set[str] = set()
+
+        # ① 表里已经采集过的
         for env in table["environments"].values():
             for domain, node in env["domains"].items():
                 if domain in seen:
@@ -205,6 +207,19 @@ def _check_all(args: argparse.Namespace, cfg: dict) -> int:
                     continue
                 port = (node.get("ports") or [61750])[0]
                 targets.append((domain, int(port)))
+
+        # ② 从 Verge 订阅补充还没采集过的（否则新加的机场永远测不到）
+        try:
+            for sub_info in clash_config.list_all_subscriptions():
+                for server, port in sub_info["domains"]:
+                    if server in seen:
+                        continue
+                    seen.add(server)
+                    if getattr(args, "only_enabled", False) and not store.is_airport_auto(table, server):
+                        continue
+                    targets.append((server, int(port or 61750)))
+        except clash_config.ClashConfigError:
+            pass
 
     if not targets:
         print("表里还没有任何机场记录，先跑一次 check。")
