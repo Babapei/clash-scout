@@ -128,6 +128,25 @@ class ScoutApp(App):
         width: 1fr;
         height: auto;
     }
+    #diag-header {
+        height: auto;
+        padding: 0 2;
+        background: $panel;
+        border: round $warning;
+    }
+    #diag-info { width: 1fr; }
+    #btn-diag {
+        height: 1;
+        width: auto;
+        min-width: 8;
+        padding: 0 1;
+        border: none;
+    }
+    #diag-body {
+        height: 1fr;
+        padding: 1 2;
+        overflow-y: auto;
+    }
     #audit-header { padding: 0 2; }
     #audit-info { width: 1fr; }
     #btn-audit {
@@ -149,6 +168,7 @@ class ScoutApp(App):
         Binding("4", "switch_tab('tab-alias')", "别名"),
         Binding("5", "switch_tab('tab-settings')", "设置"),
         Binding("6", "switch_tab('tab-audit')", "体检"),
+        Binding("7", "switch_tab('tab-diag')", "诊断"),
         Binding("r", "refresh", "刷新"),
         Binding("c", "check", "检查"),
         Binding("q", "quit", "退出"),
@@ -187,6 +207,11 @@ class ScoutApp(App):
                 yield DataTable(id="table-alias", zebra_stripes=True)
             with TabPane("设置", id="tab-settings"):
                 yield Static("正在读取…", id="settings")
+            with TabPane("诊断", id="tab-diag"):
+                with Horizontal(id="diag-header"):
+                    yield Static("尚未诊断", id="diag-info")
+                    yield Button("开始诊断", id="btn-diag", variant="warning")
+                yield Static("", id="diag-body")
             with TabPane("体检", id="tab-audit"):
                 with Vertical(id="audit-recommend"):
                     yield Static("", id="audit-recommend-text")
@@ -234,6 +259,8 @@ class ScoutApp(App):
         if path.exists():
             with store.locked(path) as data:
                 snapshot = data
+
+        self._last_snapshot = snapshot
 
         # 每个 Tab 独立刷新：一个出错不拖累其他
         for name, fn in (
@@ -518,11 +545,52 @@ class ScoutApp(App):
 
 
 
+
+    # ---------------------------------------------------------------- Tab 7 诊断
+
+    @work(thread=True)
+    def start_diag(self) -> None:
+        """后台跑网络诊断。"""
+        from . import diag as diag_module
+
+        info = self.query_one("#diag-info", Static)
+        body = self.query_one("#diag-body", Static)
+        self.call_from_thread(info.update, "诊断中…")
+
+        domain = None
+        port = 61750
+        try:
+            domain, resolved_port, _ = clash_config.resolve_target()
+            port = resolved_port
+        except clash_config.ClashConfigError:
+            pass
+
+        ips: list[str] = []
+        if domain:
+            with store.locked(self._data_path()) as data:
+                for env in data["environments"].values():
+                    node = env["domains"].get(domain)
+                    if node:
+                        ips = list(node["ips"].keys())[:5]
+                        break
+
+        try:
+            result = diag_module.diagnose(domain, port, ips)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(info.update, f"[red]诊断失败：{exc}[/red]")
+            return
+
+        report = diag_module.format_report(result)
+        self.call_from_thread(info.update, f"上次诊断：刚刚  ·  {result.get('verdict')}")
+        self.call_from_thread(body.update, report)
+
     # ---------------------------------------------------------------- Tab 6 体检
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-audit":
             self.start_audit()
+        elif event.button.id == "btn-diag":
+            self.start_diag()
 
     @work(thread=True)
     def start_audit(self) -> None:
