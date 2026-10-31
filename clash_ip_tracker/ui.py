@@ -138,7 +138,8 @@ class ScoutApp(App):
         border: none;
     }
     #audit-progress { height: 1; margin: 0 2 1 2; }
-    DataTable { height: 1fr; }
+    TabbedContent, TabPane { padding: 0; }
+    DataTable { height: 1fr; width: 100%; }
     """
 
     BINDINGS = [
