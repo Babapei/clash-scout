@@ -110,7 +110,7 @@ class ScoutApp(App):
 
     CSS = """
     Screen { layout: vertical; }
-    #status {
+    #status, #compare-title {
         height: auto;
         padding: 1 2;
         background: $panel;
@@ -303,10 +303,7 @@ class ScoutApp(App):
                 display_node = node
                 break
         display = store.domain_display(display_node or {}, self.domain)
-        title.update(
-            f"[b]当前机场[/b] {display}（{self.domain}）    "
-            f"[b]对比环境[/b] {' · '.join(label for _, label in env_cols)}"
-        )
+        title.update(f"[b]当前机场[/b] {display}（{self.domain}）")
 
         table.add_columns("IP", *[label for _, label in env_cols], "结论")
 
