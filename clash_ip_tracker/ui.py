@@ -335,9 +335,12 @@ class ScoutApp(App):
 
         # ① 表里记录过的机场
         domains: dict[str, dict[str, dict[str, Any]]] = {}
+        domain_sub: dict[str, dict[str, str]] = {}
         for env_id, env in envs.items():
             for domain, node in env.get("domains", {}).items():
                 domains.setdefault(domain, {})[env_id] = node
+                if node.get("subscription"):
+                    domain_sub[domain] = node["subscription"]
 
         # ② 补充 Verge 里存在、但还没采集过的机场
         verge_ports: dict[str, str] = {}
@@ -345,9 +348,12 @@ class ScoutApp(App):
             for sub in clash_config.list_all_subscriptions():
                 for server, port in sub["domains"]:
                     domains.setdefault(server, {})
+                    domain_sub.setdefault(
+                        server, {"uid": sub["uid"], "name": sub["name"]}
+                    )
                     if port:
                         verge_ports.setdefault(server, str(port))
-        except Exception:  # noqa: BLE001 - 读不到 Verge 不影响已有数据
+        except Exception:  # noqa: BLE001
             pass
 
         if not domains:
@@ -357,22 +363,20 @@ class ScoutApp(App):
             return
 
         table.add_columns(
-            "机场", "端口", *[label for _, label in env_cols], "唯一IP", "自动"
+            "机场", "域名", "端口", *[label for _, label in env_cols], "唯一IP", "自动"
         )
         self.airport_rows = []
 
         for domain in sorted(domains):
             env_map = domains[domain]
+            sub_name = (domain_sub.get(domain) or {}).get("name") or "-"
 
             if env_map:
-                any_node = next(iter(env_map.values()))
-                display = store.domain_display(any_node, domain)
                 ports: set[str] = set()
                 for node in env_map.values():
                     ports.update(str(p) for p in node.get("ports", []))
                 port_text = ",".join(sorted(ports)) or verge_ports.get(domain, "-")
             else:
-                display = domain
                 port_text = verge_ports.get(domain, "-")
 
             cells: list[str] = []
@@ -391,7 +395,7 @@ class ScoutApp(App):
 
             unique = str(len(all_ips)) if env_map else "未采集"
             auto = "✓" if store.is_airport_auto(snapshot, domain) else "✗"
-            table.add_row(display, port_text, *cells, unique, auto)
+            table.add_row(sub_name, domain, port_text, *cells, unique, auto)
             self.airport_rows.append(domain)
 
     def action_toggle_auto(self) -> None:
