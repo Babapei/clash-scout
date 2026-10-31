@@ -202,11 +202,22 @@ class ScoutApp(App):
             with store.locked(path) as data:
                 snapshot = data
 
-        self._render_current(snapshot)
-        self._render_compare(snapshot)
-        self._render_airports(snapshot)
-        self._render_aliases(snapshot)
-        self._render_settings()
+        # 每个 Tab 独立刷新：一个出错不拖累其他
+        for name, fn in (
+            ("当前", self._render_current),
+            ("环境对比", self._render_compare),
+            ("机场", self._render_airports),
+            ("别名", self._render_aliases),
+        ):
+            try:
+                fn(snapshot)
+            except Exception as exc:  # noqa: BLE001
+                self.notify(f"{name} Tab 刷新失败：{exc}", severity="error")
+
+        try:
+            self._render_settings()
+        except Exception as exc:  # noqa: BLE001
+            self.notify(f"设置 Tab 刷新失败：{exc}", severity="error")
 
     # ---------------------------------------------------------------- Tab 1
 
