@@ -149,8 +149,8 @@ class ScoutApp(App):
     }
     #audit-header { padding: 0 2; }
     #audit-airport {
-        width: auto;
-        min-width: 16;
+        width: 26;
+        height: 3;
     }
     #audit-info { width: 1fr; }
     #btn-audit {
