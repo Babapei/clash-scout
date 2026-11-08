@@ -125,9 +125,17 @@ def exit_info(proxy_url: str = "http://127.0.0.1:7897", timeout: int = 10) -> di
     except (subprocess.TimeoutExpired, OSError):
         return None
     try:
-        return json.loads(result.stdout)
+        data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return None
+    if data.get("status") != "success":
+        return None
+    return {
+        "ip": data.get("query"),
+        "city": data.get("city"),
+        "country": data.get("countryCode"),
+        "org": data.get("as") or data.get("org") or data.get("isp"),
+    }
 
 
 def is_idc(org: str | None) -> bool:
