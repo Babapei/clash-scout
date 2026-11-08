@@ -125,34 +125,25 @@ def test_nodes(ips: list[str], port: int, timeout: float = 3.0) -> list[dict[str
 
 
 def test_proxy(proxy_url: str = "http://127.0.0.1:7897", attempts: int = 3) -> dict[str, Any]:
-    """走代理请求 ipinfo，测出口和成功率。"""
+    """走代理查出口，测成功率和响应时间。
+
+    复用 audit.exit_info：多源 fallback（ip-api → ipinfo → ifconfig）。
+    """
+    from .audit import exit_info
+
     successes = 0
     sample: dict[str, Any] | None = None
     times: list[float] = []
 
     for _ in range(attempts):
         started = time.time()
-        ok, out = _run(
-            ["curl", "-s", "-m", "8", "-x", proxy_url, "http://ip-api.com/json"],
-            timeout=12,
-        )
+        data = exit_info(proxy_url)
         elapsed = (time.time() - started) * 1000
-        if ok and out.strip().startswith("{"):
-            try:
-                data = json.loads(out)
-            except json.JSONDecodeError:
-                continue
-            if data.get("status") != "success":
-                continue  # 限流/失败
+        if data and data.get("ip"):
             successes += 1
             times.append(elapsed)
             if sample is None:
-                sample = {
-                    "ip": data.get("query"),
-                    "city": data.get("city"),
-                    "country": data.get("countryCode"),
-                    "org": data.get("as") or data.get("org") or data.get("isp"),
-                }
+                sample = data
 
     return {
         "ok": successes > 0,

@@ -17,7 +17,12 @@ from typing import Any, Callable
 
 DEFAULT_SOCK = "/var/run/clash-verge-service/users/501/verge-mihomo.sock"
 DEFAULT_GROUP = "🌐 代理"
-IPINFO_URL = "http://ip-api.com/json"
+# 出口查询 API，按顺序尝试，前一个失败就换下一个
+EXIT_APIS = (
+    ("http://ip-api.com/json", "ip-api"),
+    ("https://ipinfo.io/json", "ipinfo"),
+    ("https://ifconfig.me/all.json", "ifconfig"),
+)
 
 # 机房/云厂商关键词（用来判断是不是 IDC，不是住宅 IP）
 IDC_KEYWORDS = (
@@ -113,21 +118,7 @@ def switch_node(group: str, node: str) -> bool:
     return result.returncode == 0 and not result.stdout.strip()
 
 
-def exit_info(proxy_url: str = "http://127.0.0.1:7897", timeout: int = 10) -> dict[str, Any] | None:
-    """走代理查当前出口 IP 信息。"""
-    try:
-        result = subprocess.run(
-            ["curl", "-s", "-m", str(timeout), "-x", proxy_url, IPINFO_URL],
-            capture_output=True,
-            text=True,
-            timeout=timeout + 5,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return None
-    try:
-        data = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return None
+def _parse_ipapi(data: dict[str, Any]) -> dict[str, Any] | None:
     if data.get("status") != "success":
         return None
     return {
@@ -136,6 +127,55 @@ def exit_info(proxy_url: str = "http://127.0.0.1:7897", timeout: int = 10) -> di
         "country": data.get("countryCode"),
         "org": data.get("as") or data.get("org") or data.get("isp"),
     }
+
+
+def _parse_ipinfo(data: dict[str, Any]) -> dict[str, Any] | None:
+    if not data.get("ip"):
+        return None
+    return {
+        "ip": data.get("ip"),
+        "city": data.get("city"),
+        "country": data.get("country"),
+        "org": data.get("org"),
+    }
+
+
+def _parse_ifconfig(data: dict[str, Any]) -> dict[str, Any] | None:
+    ip = data.get("ip_addr") or data.get("ip")
+    if not ip:
+        return None
+    return {"ip": ip, "city": None, "country": None, "org": None}
+
+
+_PARSERS = {
+    "ip-api": _parse_ipapi,
+    "ipinfo": _parse_ipinfo,
+    "ifconfig": _parse_ifconfig,
+}
+
+
+def exit_info(proxy_url: str = "http://127.0.0.1:7897", timeout: int = 8) -> dict[str, Any] | None:
+    """走代理查出口 IP 信息。多源依次尝试，一个失败换下一个。"""
+    for url, name in EXIT_APIS:
+        try:
+            result = subprocess.run(
+                ["curl", "-s", "-m", str(timeout), "-x", proxy_url, url],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 3,
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        if result.returncode != 0:
+            continue
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            continue
+        parsed = _PARSERS[name](data)
+        if parsed and parsed.get("ip"):
+            return parsed
+    return None
 
 
 def is_idc(org: str | None) -> bool:
