@@ -150,7 +150,10 @@ class ScoutApp(App):
     #audit-header { padding: 0 2; }
     #audit-airport {
         width: 22;
-        height: 3;
+        height: 1;
+        border: none;
+        background: transparent;
+        padding: 0;
     }
     #audit-info { width: 1fr; }
     #btn-audit {
