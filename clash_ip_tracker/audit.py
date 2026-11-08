@@ -40,17 +40,49 @@ def _api(path: str) -> dict[str, Any] | None:
     except (subprocess.TimeoutExpired, OSError):
         return None
     try:
-        data = json.loads(result.stdout)
+        return json.loads(result.stdout)
     except json.JSONDecodeError:
         return None
-    if data.get("status") == "success":
-        return {
-            "ip": data.get("query"),
-            "city": data.get("city"),
-            "country": data.get("countryCode"),
-            "org": data.get("as") or data.get("org") or data.get("isp"),
-        }
     return None
+
+
+def find_group(preferred: str = DEFAULT_GROUP) -> str | None:
+    """找一个可用的代理组。
+
+    优先用 preferred（比如「🌐 代理」），找不到就用当前订阅同名的组，
+    再找不到就用选项最多的那个 Selector（排除 GLOBAL）。
+    """
+    data = _api("/proxies")
+    if not data:
+        return None
+    proxies = data.get("proxies") or {}
+
+    # ① 优先用指定名字
+    if preferred in proxies and proxies[preferred].get("type") == "Selector":
+        return preferred
+
+    selectors = [
+        (name, info) for name, info in proxies.items()
+        if info.get("type") == "Selector" and name != "GLOBAL"
+    ]
+    if not selectors:
+        return None
+
+    # ② 当前订阅同名组（Verge 切订阅后组名会变成订阅名）
+    try:
+        from .clash_config import current_subscription
+        sub = current_subscription()
+        sub_name = sub.get("name")
+        if sub_name:
+            for name, _ in selectors:
+                if name == sub_name:
+                    return name
+    except Exception:  # noqa: BLE001
+        pass
+
+    # ③ 选项最多的
+    selectors.sort(key=lambda item: len(item[1].get("all") or []), reverse=True)
+    return selectors[0][0]
 
 
 def get_group(group: str = DEFAULT_GROUP) -> dict[str, Any] | None:
@@ -117,9 +149,13 @@ def audit(
 
     on_progress(index, total, node, result) 用于实时回调。
     """
+    actual_group = find_group(group)
+    if not actual_group:
+        raise RuntimeError("找不到可用的代理组，或者 Verge 没运行")
+    group = actual_group
     info = get_group(group)
     if not info:
-        raise RuntimeError(f"找不到代理组「{group}」，或者 Verge 没运行")
+        raise RuntimeError(f"代理组「{group}」读取失败")
 
     original = info.get("now")
 
