@@ -19,7 +19,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual import work
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Select, Static, TabbedContent, TabPane
+from textual.widgets import Button, DataTable, Footer, Header, Input, OptionList, Static, TabbedContent, TabPane
+from textual.widgets.option_list import Option
 
 from . import clash_config, config, store
 from .port_probe import tcp_probe
@@ -106,6 +107,49 @@ class EditAliasScreen(ModalScreen[str]):
     def action_cancel(self) -> None:
         self.dismiss(None)
 
+
+class PickAirportScreen(ModalScreen[str]):
+    """选择机场的弹窗。返回机场名，取消返回 None。"""
+
+    CSS = """
+    PickAirportScreen { align: center middle; }
+    #pick-dialog {
+        width: 40;
+        height: auto;
+        max-height: 20;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #airport-list { height: auto; max-height: 14; }
+    """
+
+    BINDINGS = [("escape", "cancel", "取消")]
+
+    def __init__(self, airports: list[str], current: str | None) -> None:
+        super().__init__()
+        self.airports = airports
+        self.current = current
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pick-dialog"):
+            yield Static("[b]选择机场[/b]")
+            options = [
+                Option(("▸ " if name == self.current else "  ") + name, id=name)
+                for name in self.airports
+            ]
+            yield OptionList(*options, id="airport-list")
+
+    def on_mount(self) -> None:
+        self.query_one("#airport-list", OptionList).focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(str(event.option.id))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class ScoutApp(App):
     """scout 的终端仪表盘。"""
 
@@ -148,12 +192,12 @@ class ScoutApp(App):
         overflow-y: auto;
     }
     #audit-header { padding: 0 2; }
-    #audit-airport {
-        width: 22;
+    #btn-pick-airport {
+        width: auto;
+        min-width: 12;
         height: 1;
         border: none;
-        background: transparent;
-        padding: 0;
+        padding: 0 1;
     }
     #audit-info { width: 1fr; }
     #btn-audit {
@@ -218,7 +262,7 @@ class ScoutApp(App):
                 with Vertical(id="audit-recommend"):
                     yield Static("", id="audit-recommend-text")
                 with Horizontal(id="audit-header"):
-                    yield Select([], id="audit-airport", prompt="选择机场")
+                    yield Button("红杏云", id="btn-pick-airport", variant="default")
                     yield Static("尚未体检", id="audit-info")
                     yield Button("开始体检", id="btn-audit", variant="primary")
                 yield Static("", id="audit-progress")
@@ -599,6 +643,8 @@ class ScoutApp(App):
             self.start_audit()
         elif event.button.id == "btn-diag":
             self.start_diag()
+        elif event.button.id == "btn-pick-airport":
+            self.pick_airport()
 
     @work(thread=True)
     def start_audit(self) -> None:
@@ -627,25 +673,23 @@ class ScoutApp(App):
         """把已保存的体检结果画出来（按选中的机场过滤）。"""
         table = self.query_one("#table-audit", DataTable)
         info = self.query_one("#audit-info", Static)
-        select = self.query_one("#audit-airport", Select)
         table.clear()
 
+        btn = self.query_one("#btn-pick-airport", Button)
         airports = store.list_audit_airports(snapshot)
         if not airports:
+            btn.label = "无机场"
             info.update("尚未体检过")
             self.query_one("#audit-recommend-text", Static).update("尚未体检，暂无推荐")
             return
 
-        # 同步下拉选项（保留当前选中）
-        current = select.value
-        option_names = [name for name in airports]
-        if [str(o) for o in getattr(select, "_options", [])] != option_names:
-            select.set_options([(name, name) for name in airports])
-            select.value = airports[0]
+        # 当前选中的机场（存在实例上）
+        selected = getattr(self, "selected_airport", None)
+        if selected not in airports:
+            selected = airports[0]
+            self.selected_airport = selected
 
-        selected = current if current not in (None, Select.BLANK) and current in airports else airports[0]
-        if select.value in (None, Select.BLANK):
-            select.value = selected
+        btn.label = f"{selected} ▸"
         nodes = store.get_audit_nodes(snapshot, selected)
         if not nodes:
             info.update(f"「{selected}」还没有体检记录")
@@ -909,6 +953,24 @@ class ScoutApp(App):
         self.notify(f"已更新：{new_name.strip() or '（恢复原始值）'}")
 
     # ---------------------------------------------------------------- 动作
+
+
+    def pick_airport(self) -> None:
+        """弹出机场选择框。"""
+        with store.locked(self._data_path()) as data:
+            airports = store.list_audit_airports(data)
+        if not airports:
+            self.notify("还没有体检数据", severity="warning")
+            return
+        self.push_screen(
+            PickAirportScreen(airports, getattr(self, "selected_airport", None)),
+            self._on_airport_picked,
+        )
+
+    def _on_airport_picked(self, name: str | None) -> None:
+        if name:
+            self.selected_airport = name
+            self.refresh_data()
 
     def action_switch_tab(self, tab_id: str) -> None:
         self.query_one(TabbedContent).active = tab_id
