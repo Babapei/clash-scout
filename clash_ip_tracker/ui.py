@@ -119,7 +119,7 @@ class ScoutApp(App):
     }
     #audit-recommend {
         height: auto;
-        padding: 0 2;
+        padding: 0 1;
         margin-bottom: 1;
         background: $success-darken-2;
         border: round $success;
@@ -149,7 +149,7 @@ class ScoutApp(App):
     }
     #audit-header { padding: 0 2; }
     #audit-airport {
-        width: 26;
+        width: 22;
         height: 3;
     }
     #audit-info { width: 1fr; }
@@ -654,8 +654,7 @@ class ScoutApp(App):
             default=None,
         )
         info.update(
-            f"[b]{selected}[/b]  {relative_age(latest) or '刚刚'}体检过    "
-            f"[b]{len(nodes)}[/b] 个节点"
+            f"{relative_age(latest) or '刚刚'}体检过    [b]{len(nodes)}[/b] 个节点"
         )
 
         # 推荐框
