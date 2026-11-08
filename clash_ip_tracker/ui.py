@@ -121,7 +121,13 @@ class PickAirportScreen(ModalScreen[str]):
         background: $surface;
         padding: 1 2;
     }
-    #airport-list { height: auto; max-height: 14; }
+    #airport-list {
+        height: auto;
+        max-height: 14;
+        border: none;
+        padding: 0;
+        background: transparent;
+    }
     """
 
     BINDINGS = [("escape", "cancel", "取消")]
