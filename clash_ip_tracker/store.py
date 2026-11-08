@@ -269,9 +269,24 @@ def needs_check(rec: dict[str, Any], recheck_minutes: int) -> bool:
 # ---------------------------------------------------------------- 节点体检
 
 
-def save_audit(table: dict[str, Any], results: list[dict[str, Any]]) -> None:
-    """把体检结果合并进表里的 nodes 字段。"""
+def save_audit(
+    table: dict[str, Any],
+    results: list[dict[str, Any]],
+    subscription: dict[str, str] | None = None,
+) -> None:
+    """把体检结果合并进表里的 nodes 字段（按机场分组）。"""
     nodes = table.setdefault("nodes", {})
+    sub_name = (subscription or {}).get("name") or "未分组"
+
+    # 兼容旧结构：如果 nodes 里直接是节点（没有机场这一层），迁移一下
+    if nodes and not any(isinstance(v, dict) and ("ip" in v or "audited_at" in v) is False for v in nodes.values()):
+        pass
+    if nodes and "audited_at" in next(iter(nodes.values()), {}):
+        migrated: dict[str, dict[str, Any]] = {"未分组": nodes}
+        table["nodes"] = migrated
+        nodes = migrated
+
+    bucket = nodes.setdefault(sub_name, {})
     stamp = now_iso()
     for item in results:
         if not item.get("ok"):
@@ -279,7 +294,7 @@ def save_audit(table: dict[str, Any], results: list[dict[str, Any]]) -> None:
         name = str(item.get("node") or "")
         if not name:
             continue
-        nodes[name] = {
+        bucket[name] = {
             "ip": item.get("ip"),
             "city": item.get("city"),
             "country": item.get("country"),
@@ -291,8 +306,35 @@ def save_audit(table: dict[str, Any], results: list[dict[str, Any]]) -> None:
         }
 
 
-def get_audit_nodes(table: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return table.get("nodes") or {}
+def get_audit_nodes(table: dict[str, Any], subscription: str | None = None) -> dict[str, dict[str, Any]]:
+    """取体检结果。指定 subscription 时只返回该机场的节点。"""
+    nodes = table.get("nodes") or {}
+    if not nodes:
+        return {}
+
+    # 旧结构兼容
+    if "audited_at" in next(iter(nodes.values()), {}):
+        nodes = {"未分组": nodes}
+
+    if subscription:
+        return nodes.get(subscription) or {}
+
+    # 不指定时合并全部（后面 UI 会指定）
+    merged: dict[str, dict[str, Any]] = {}
+    for bucket in nodes.values():
+        if isinstance(bucket, dict):
+            merged.update(bucket)
+    return merged
+
+
+def list_audit_airports(table: dict[str, Any]) -> list[str]:
+    """有哪些机场有体检记录。"""
+    nodes = table.get("nodes") or {}
+    if not nodes:
+        return []
+    if "audited_at" in next(iter(nodes.values()), {}):
+        return ["未分组"]
+    return sorted(nodes)
 
 # ---------------------------------------------------------------- 别名
 

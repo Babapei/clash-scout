@@ -749,7 +749,11 @@ def cmd_audit(args: argparse.Namespace, cfg: dict) -> int:
     # 存进表，下次打开还能看到
     if results:
         with store.locked(_data_path(cfg)) as table:
-            store.save_audit(table, results)
+            try:
+                sub = clash_config.current_subscription()
+            except clash_config.ClashConfigError:
+                sub = None
+            store.save_audit(table, results, subscription=sub)
         print(f"\n已保存到 {_data_path(cfg)}")
     return 0
 

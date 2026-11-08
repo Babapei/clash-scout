@@ -19,7 +19,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual import work
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane
+from textual.widgets import Button, DataTable, Footer, Header, Input, Select, Static, TabbedContent, TabPane
 
 from . import clash_config, config, store
 from .port_probe import tcp_probe
@@ -148,6 +148,10 @@ class ScoutApp(App):
         overflow-y: auto;
     }
     #audit-header { padding: 0 2; }
+    #audit-airport {
+        width: auto;
+        min-width: 16;
+    }
     #audit-info { width: 1fr; }
     #btn-audit {
         height: 1;
@@ -211,6 +215,7 @@ class ScoutApp(App):
                 with Vertical(id="audit-recommend"):
                     yield Static("", id="audit-recommend-text")
                 with Horizontal(id="audit-header"):
+                    yield Select([], id="audit-airport", prompt="选择机场")
                     yield Static("尚未体检", id="audit-info")
                     yield Button("开始体检", id="btn-audit", variant="primary")
                 yield Static("", id="audit-progress")
@@ -616,14 +621,32 @@ class ScoutApp(App):
         self.call_from_thread(self._show_audit_results, results)
 
     def _render_audit(self, snapshot: dict[str, Any]) -> None:
-        """把已保存的体检结果画出来。"""
+        """把已保存的体检结果画出来（按选中的机场过滤）。"""
         table = self.query_one("#table-audit", DataTable)
         info = self.query_one("#audit-info", Static)
+        select = self.query_one("#audit-airport", Select)
         table.clear()
-        nodes = store.get_audit_nodes(snapshot)
-        if not nodes:
+
+        airports = store.list_audit_airports(snapshot)
+        if not airports:
             info.update("尚未体检过")
             self.query_one("#audit-recommend-text", Static).update("尚未体检，暂无推荐")
+            return
+
+        # 同步下拉选项（保留当前选中）
+        current = select.value
+        option_names = [name for name in airports]
+        if [str(o) for o in getattr(select, "_options", [])] != option_names:
+            select.set_options([(name, name) for name in airports])
+            select.value = airports[0]
+
+        selected = current if current not in (None, Select.BLANK) and current in airports else airports[0]
+        if select.value in (None, Select.BLANK):
+            select.value = selected
+        nodes = store.get_audit_nodes(snapshot, selected)
+        if not nodes:
+            info.update(f"「{selected}」还没有体检记录")
+            self.query_one("#audit-recommend-text", Static).update("暂无推荐")
             return
 
         latest = max(
@@ -631,8 +654,8 @@ class ScoutApp(App):
             default=None,
         )
         info.update(
-            f"[b]上次体检[/b] {relative_age(latest) or '刚刚'}    "
-            f"[b]已记录[/b] {len(nodes)} 个节点"
+            f"[b]{selected}[/b]  {relative_age(latest) or '刚刚'}体检过    "
+            f"[b]{len(nodes)}[/b] 个节点"
         )
 
         # 推荐框
@@ -679,7 +702,11 @@ class ScoutApp(App):
         # 写进表，下次打开还能看到
         try:
             with store.locked(self._data_path()) as data:
-                store.save_audit(data, results)
+                try:
+                    sub = clash_config.current_subscription()
+                except clash_config.ClashConfigError:
+                    sub = None
+                store.save_audit(data, results, subscription=sub)
         except Exception as exc:  # noqa: BLE001
             self.notify(f"保存体检结果失败：{exc}", severity="error")
 
